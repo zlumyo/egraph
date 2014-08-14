@@ -56,7 +56,7 @@ class ExplainingGraph(IGroup):
             + "\t" + "tooltip=\"" + self._tooltip + "\";\n" \
             + "\t" + "id=\"" + str(self._id) + "\";\n" \
             + "\t" + "compound=" + self._compound + ";\n" \
-            + "\t" + "rankdir=" + self._rankdir + ";\n" + "\n"
+            + "\t" + "rankdir=" + self._rankdir + ";\n\n"
 
         result += "\t" + '"begin" [color=purple, shape=box, style=filled];\n'
         result += "\t" + '"end" [color=purple, shape=box, style=filled];\n'
@@ -74,12 +74,26 @@ class Cluster(IGroup, metaclass=abc.ABCMeta):
 
     def __init__(self):
         IGroup.__init__(self)
-        self._bgcolor = ""
-        self._style = ""
+        self._bgcolor = "white"
+        self._color = "black"
+        self._style = "solid"
         self._label = ""
 
     def to_dot(self, state=None) -> str:
-        pass
+        margin_before = '\t'*state[2] if state is not None else ''
+        state[2] += 1
+        margin_after = margin_before + '\t'
+        result = margin_before + 'subgraph "cluster_{0}" {\n'.format(self._id) \
+            + margin_before + 'style={0};\n'.format(self._style) \
+            + margin_before + 'color={0};\n'.format(self._color) \
+            + margin_before + 'bgcolor={0};\n'.format(self._bgcolor) \
+            + margin_before + 'label="{0}";\n'.format(self._label) \
+            + margin_before + 'id="graphid_{0}";\n\n'.format(self._id)
+
+        ''.join([part.to_dot(state) for part in self._parts])
+
+        state[2] -= 1
+        return result + margin_before + '}\n'
 
 
 class Node(metaclass=abc.ABCMeta):
