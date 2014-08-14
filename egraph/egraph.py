@@ -56,7 +56,7 @@ class ExplainingGraph(IGroup):
             + "\t" + "tooltip=\"" + self._tooltip + "\";\n" \
             + "\t" + "id=\"" + str(self._id) + "\";\n" \
             + "\t" + "compound=" + self._compound + ";\n" \
-            + "\t" + "rankdir=" + self._compound + ";\n" + "\n"
+            + "\t" + "rankdir=" + self._rankdir + ";\n" + "\n"
 
         result += "\t" + '"begin" [color=purple, shape=box, style=filled];\n'
         result += "\t" + '"end" [color=purple, shape=box, style=filled];\n'
@@ -64,7 +64,7 @@ class ExplainingGraph(IGroup):
         state = ["begin", "", 1]
         iterfunc = lambda part, s: part.to_dot(s)
         return result + ''.join([iterfunc(part, state) for part in self._parts]) + \
-            '\t"{0}" -> "end";\n}}'.format(state[0])
+            '\t"{0}" -> "end" [label="{1}"];\n}}'.format(state[0], state[1])
 
 
 class Cluster(IGroup, metaclass=abc.ABCMeta):
@@ -77,11 +77,6 @@ class Cluster(IGroup, metaclass=abc.ABCMeta):
         self._bgcolor = ""
         self._style = ""
         self._label = ""
-
-    def add_part(self, part, counter=None):
-        if counter is not None:
-            self._idcounter = counter
-        super().add_part(part)
 
     def to_dot(self, state=None) -> str:
         pass
@@ -104,7 +99,7 @@ class Node(metaclass=abc.ABCMeta):
         """
         Получает dot-представление данного узла. Если state задано, то узел присоединяется к указанному в state.
         """
-        result = ("\t"*state[2] if state is not None else '') + '"nd_{0}" [shape={1}, id="graphid_{0}, color={2},\
+        result = '"nd_{0}" [shape={1}, id="graphid_{0}", color={2}, \
 style={3}, label="{4}", fillcolor={5}, tooltip="{4}"];\n' \
         .format(
             self._id,
@@ -115,7 +110,8 @@ style={3}, label="{4}", fillcolor={5}, tooltip="{4}"];\n' \
             self._fillcolor
         )
         if state is not None:
-            ("\t"*state[2]) + result + ("\t"*state[2]) + '"{0}" -> "nd_{1}";\n'.format(state[0], self._id)
+            result = ("\t"*state[2]) + result + ("\t"*state[2]) + '"{0}" -> "nd_{1}" [label="{2}"];\n'\
+                .format(state[0], self._id, state[1])
             state[0] = 'nd_' + str(self._id)
 
         return result
@@ -134,20 +130,20 @@ class Edge(metaclass=abc.ABCMeta):
     Ребро в объясняющем графе.
     """
 
-    def __init__(self, src=None, dst=None):
-        self._source = src
-        self._destination = dst
+    def __init__(self):
         self._label = ""
         self._id = -1
         self._color = ""
         self._tooltip = ""
         self._arrowhead = ""
 
-    def to_dot(self) -> str:
+    def to_dot(self, state=None) -> str:
         """
         Получает dot-представление данного ребра.
         """
-        raise NotImplementedError
+        if state is not None:
+            state[1] += ('\n' if state[1] != '' else '') + self._label
+        return ''
 
     @property
     def id(self):
@@ -188,3 +184,17 @@ class Text(Node):
         self._style = "solid"
         self._id = -1
         self._fillcolor = "white"
+
+
+class BorderAssert(Edge):
+    """
+    Представляет простое утверждение в регулярном выражении.
+    """
+
+    def __init__(self, inverse=False):
+        self._label = "a word boundary"
+        self._id = -1
+        self._color = "black"
+        self._tooltip = "a word boundary"
+        self._arrowhead = "normal"
+        self._inverse = inverse
