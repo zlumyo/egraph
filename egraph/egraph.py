@@ -83,14 +83,25 @@ class Cluster(IGroup, metaclass=abc.ABCMeta):
         margin_before = '\t'*state[2] if state is not None else ''
         state[2] += 1
         margin_after = margin_before + '\t'
-        result = margin_before + 'subgraph "cluster_{0}" {\n'.format(self._id) \
-            + margin_before + 'style={0};\n'.format(self._style) \
-            + margin_before + 'color={0};\n'.format(self._color) \
-            + margin_before + 'bgcolor={0};\n'.format(self._bgcolor) \
-            + margin_before + 'label="{0}";\n'.format(self._label) \
-            + margin_before + 'id="graphid_{0}";\n\n'.format(self._id)
+        result = margin_before + 'subgraph "cluster_{0}" {{\n'.format(self._id) \
+            + margin_after + 'style={0};\n'.format(self._style) \
+            + margin_after + 'color={0};\n'.format(self._color) \
+            + margin_after + 'bgcolor={0};\n'.format(self._bgcolor) \
+            + margin_after + 'label="{0}";\n'.format(self._label) \
+            + margin_after + 'id="graphid_{0}";\n\n'.format(self._id)
 
-        ''.join([part.to_dot(state) for part in self._parts])
+        if len(self._parts) != 0:
+            result += ''.join([part.to_dot(state) for part in self._parts])
+        elif state is not None:
+            point_id = -1
+            if self._gmain is not None:
+                self._gmain._idcounter += 1
+                point_id = self._gmain._idcounter
+
+            result += margin_after + '"nd_{0}" [shape=point];\n'.format(point_id)
+            result = margin_before + '"{0}" -> "nd_{1}";\n'.format(state[0], point_id) + result
+
+            state[0] = "nd_{0}".format(point_id)
 
         state[2] -= 1
         return result + margin_before + '}\n'
@@ -212,3 +223,13 @@ class BorderAssert(Edge):
         self._tooltip = "a word boundary"
         self._arrowhead = "normal"
         self._inverse = inverse
+
+class Subexpression(Cluster):
+    """
+    Представляет подвыражение в регулярном выражении.
+    """
+
+    def __init__(self, number=0):
+        Cluster.__init__(self)
+        self._number = number
+        self._label = "subexpression #{0}".format(number)
