@@ -36,3 +36,30 @@ class DotNode(IDotable):
         return '"nd_{0}" [shape={1}, id="graphid_{0}", color={2}, style={3}, label="{4}", fillcolor={5},' \
                ' tooltip="{6}"];'\
             .format(self.id, self.shape, self.color, self.style, self.label, self.fillcolor, self.tooltip)
+
+
+class DotLink(IDotable):
+    """
+    Связь в dot-коде.
+    """
+
+    def __init__(self, source: DotNode, destination: DotNode, id=-1, label='', color='black', tooltip='', style='solid',
+                 arrowhead='normal'):
+        IDotable.__init__(self, id, label, color, tooltip, style)
+        self.source = source
+        self.destination = destination
+        self.arrowhead = arrowhead
+
+    def to_dot(self):
+        return '"nd_{0}" -> "nd_{1}" [id="graphid_{2}", label="{3}", color="{4}", tooltip="{5}", ' \
+               'arrowhead="{6}", style="{7}"]'\
+            .format(
+                self.source.id,
+                self.destination.id,
+                self.id,
+                self.label,
+                self.color,
+                self.tooltip,
+                self.arrowhead,
+                self.style
+            )
