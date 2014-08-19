@@ -30,6 +30,8 @@ class IGroupable(IDotable, metaclass=abc.ABCMeta):
         self.links = []
         self.subgraphs = []
         self.bgcolor = bgcolor
+        self.node_attrs = {}
+        self.edge_attrs = {}
 
     def to_dot(self, level=0):
         level += 1
@@ -115,10 +117,26 @@ class DotSubgraph(IGroupable):
             'bgcolor={3};',
             'label="{4}";',
             'id="graphid_{0}";',
-            'tooltip="{5}";'
+            'tooltip="{5}";',
+            self._get_node_attrs(),
+            self._get_edge_attrs()
         ])
 
         return '\t'*(level-1) + result.format(self.id, self.style, self.color, self.bgcolor, self.label, self.tooltip)
+
+    def _get_node_attrs(self):
+        result = 'node ['
+
+        result += ', '.join(['{0}="{1}"'.format(k, v) for k, v in self.node_attrs])
+
+        return result + ']'
+
+    def _get_edge_attrs(self):
+        result = 'edge ['
+
+        result += ', '.join(['{0}="{1}"'.format(k, v) for k, v in self.edge_attrs])
+
+        return result + ']'
 
 
 class DotDigraph(IGroupable):
