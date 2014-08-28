@@ -26,9 +26,7 @@ class IGroupable(IDotable, metaclass=abc.ABCMeta):
 
     def __init__(self, id=-1, label='', style='solid', bgcolor='white'):
         IDotable.__init__(self, id, label, style)
-        self.nodes = []
-        self.links = []
-        self.subgraphs = []
+        self.items = []
         self.bgcolor = bgcolor
         self.node_attrs = {}
         self.edge_attrs = {}
@@ -37,9 +35,7 @@ class IGroupable(IDotable, metaclass=abc.ABCMeta):
         level += 1
         result = self._initial(level)
 
-        result += ''.join([('\t'*level) + node.to_dot() + '\n' for node in self.nodes])
-        result += ''.join([('\t'*level) + subgraph.to_dot(level+1) + '\n' for subgraph in self.subgraphs])
-        result += ''.join([('\t'*level) + link.to_dot() + '\n' for link in self.links])
+        result += ''.join([('\t'*level) + item.to_dot(level+1) + '\n' for item in self.items])
 
         level -= 1
         return result + ('\t'*level) + '}'
@@ -144,8 +140,8 @@ class DotDigraph(IGroupable):
     Главный граф в dot-коде.
     """
 
-    def __init__(self, id=-1, label='', style='solid', bgcolor='white'):
-        IDotable.__init__(self, "explaining_graph", label, style)
+    def __init__(self, id="explaining_graph", label='', style='solid', bgcolor='white'):
+        IDotable.__init__(self, id, label, style)
         self.nodes = []
         self.links = []
         self.subgraphs = []
