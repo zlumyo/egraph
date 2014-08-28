@@ -63,15 +63,21 @@ class ExplainingGraph(PartContainer):
 
         begin = DotNode(self._idcounter, "begin", 'filled', "purple", "begin", "rect", "purple")
         self._idcounter += 1
-        graph.nodes.append(begin)
+        graph.items.append(begin)
         end = DotNode(self._idcounter, "end", 'filled', "purple", "end", "rect", "purple")
         self._idcounter += 1
-        graph.nodes.append(end)
+        graph.items.append(end)
 
         current = begin
         for item in self._parts:
-            parts, current = item.to_graph(current)
-            graph.items += parts
+            parts, new = item.to_graph(current)
+            graph.items += parts + [DotLink(current, new, self._idcounter)]
+            self._idcounter += 1
+            current = new
+
+        graph.items += [DotLink(current, end, self._idcounter)]
+
+        return graph
 
 
 class Alternative(Part):
@@ -96,8 +102,9 @@ class Text(Part):
         Part.__init__(self)
         self.text = txt
 
-    def to_graph(self):
-        pass
+    def to_graph(self, current=None):
+        node = DotNode(self._id, self.text)
+        return [node], node
 
 
 class BorderAssert(Part):

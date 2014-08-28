@@ -15,7 +15,7 @@ class IDotable(metaclass=abc.ABCMeta):
         self.style = style
 
     @abc.abstractmethod
-    def to_dot(self):
+    def to_dot(self, level=0):
         pass
 
 
@@ -57,7 +57,7 @@ class DotNode(IDotable):
         self.color = color
         self.tooltip = tooltip
 
-    def to_dot(self):
+    def to_dot(self, level=0):
         # label и tooltip эскейпить на html
         return '"nd_{0}" [shape={1}, id="graphid_{0}", color={2}, style={3}, label="{4}", fillcolor={5},' \
                ' tooltip="{6}"];'\
@@ -78,7 +78,7 @@ class DotLink(IDotable):
         self.color = color
         self.tooltip = tooltip
 
-    def to_dot(self):
+    def to_dot(self, level=0):
         return '"nd_{0}" -> "nd_{1}" [id="graphid_{2}", label="{3}", color="{4}", tooltip="{5}", ' \
                'arrowhead="{6}", style="{7}"]'\
             .format(
@@ -142,22 +142,20 @@ class DotDigraph(IGroupable):
 
     def __init__(self, id="explaining_graph", label='', style='solid', bgcolor='white'):
         IDotable.__init__(self, id, label, style)
-        self.nodes = []
-        self.links = []
-        self.subgraphs = []
+        self.items = []
         self.bgcolor = bgcolor
         self.compound = 'true'
         self.rankdir = 'LR'
 
-    def _initial(self):
+    def _initial(self, level=1):
         level = 1
 
-        result = ('\t'*level+'\n').join([
-            'digraph "explaining graph" {',
-            'bgcolor={1};',
-            'id="{0}";',
+        result = ('\n'+'\t'*level).join([
+            'digraph "explaining graph" {{',
+            'bgcolor={0};',
+            'id="{1}";',
             'compound={2}',
             'rankdir={3}'
         ])
 
-        return '\t'*(level-1) + result.format(self.id, self.bgcolor, self.compound, self.rankdir)
+        return '\t'*(level-1) + result.format(self.bgcolor, self.id, self.compound, self.rankdir) + '\n'
