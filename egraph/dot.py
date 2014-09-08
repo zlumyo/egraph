@@ -36,16 +36,42 @@ class IGroupable(IDotable, metaclass=abc.ABCMeta):
         result = self._initial(level)
 
         result += ''.join([
-            ('\t'*level) + (item.to_dot(level) if isinstance(item, DotSubgraph) else item.to_dot(level+1)) + '\n'
+            ('\t' * level) + (item.to_dot(level) if isinstance(item, DotSubgraph) else item.to_dot(level + 1)) + '\n'
             for item in self.items
         ])
 
         level -= 1
-        return result + ('\t'*level) + '}'
+        return result + ('\t' * level) + '}'
 
     @abc.abstractmethod
     def _initial(self, level):
         pass
+
+    def find_neighbor_right(self, item):
+        # Look over links...
+        for link in filter(lambda i: isinstance(i, DotLink), self.items):
+            if link.source is item:             # If source of link is $nd...
+                return link.destination, self   # ...then we found what we were looking for.
+
+        # If we found nothing, then do the same with subgraphs.
+        for subgraph in filter(lambda i: isinstance(i, DotSubgraph), self.items):
+            result, owner = subgraph.find_neighbor_right(item)
+            if result is not None:      # If result is valid...
+                return result, owner    # ...then the right neighbor of $nd is child of current subgraph.
+        else:
+            return None, None
+
+    def find_link(self, source, destination):
+        for link in filter(lambda i: isinstance(i, DotLink), self.items):
+            if link.destination is destination and link.source is source:
+                return link, self
+
+        for subgraph in filter(lambda i: isinstance(i, DotSubgraph), self.items):
+            result, owner = subgraph.find_link(source, destination)
+            if result is not None:
+                return result, owner
+        else:
+            return None, None
 
 
 class DotNode(IDotable):
@@ -53,17 +79,19 @@ class DotNode(IDotable):
     Узел в dot-коде.
     """
 
-    def __init__(self, id=-1, label='', style='solid', color='black', tooltip='', shape='ellipse', fillcolor='white'):
+    def __init__(self, id=-1, label='', style='solid', color='black', tooltip='', shape='ellipse', fillcolor='white',
+                 comment=""):
         IDotable.__init__(self, id, label, style)
         self.shape = shape
         self.fillcolor = fillcolor
         self.color = color
         self.tooltip = tooltip
+        self.comment = comment
 
     def to_dot(self, level=0):
         # label и tooltip эскейпить на html
         return '"nd_{0}" [shape={1}, id="graphid_{0}", color={2}, style={3}, label="{4}", fillcolor={5},' \
-               ' tooltip="{6}"];'\
+               ' tooltip="{6}"];' \
             .format(self.id, self.shape, self.color, self.style, self.label, self.fillcolor, self.tooltip)
 
 
@@ -73,27 +101,28 @@ class DotLink(IDotable):
     """
 
     def __init__(self, source: DotNode, destination: DotNode, id=-1, label='', style='solid', color='black', tooltip='',
-                 arrowhead='normal'):
+                 arrowhead='normal', comment=""):
         IDotable.__init__(self, id, label, style)
         self.source = source
         self.destination = destination
         self.arrowhead = arrowhead
         self.color = color
         self.tooltip = tooltip
+        self.comment = comment
 
     def to_dot(self, level=0):
         return '"nd_{0}" -> "nd_{1}" [id="graphid_{2}", label="{3}", color="{4}", tooltip="{5}", ' \
-               'arrowhead="{6}", style="{7}"];'\
+               'arrowhead="{6}", style="{7}"];' \
             .format(
-                self.source.id,
-                self.destination.id,
-                self.id,
-                self.label,
-                self.color,
-                self.tooltip,
-                self.arrowhead,
-                self.style
-            )
+            self.source.id,
+            self.destination.id,
+            self.id,
+            self.label,
+            self.color,
+            self.tooltip,
+            self.arrowhead,
+            self.style
+        )
 
 
 class DotSubgraph(IGroupable):
@@ -109,7 +138,7 @@ class DotSubgraph(IGroupable):
         self.tooltip = tooltip
 
     def _initial(self, level=0):
-        result = ('\n'+'\t'*level).join([
+        result = ('\n' + '\t' * level).join([
             'subgraph "cluster_{0}" {{',
             'style={1};',
             'color={2};',
@@ -121,7 +150,8 @@ class DotSubgraph(IGroupable):
             self._get_edge_attrs()
         ])
 
-        return '\t'*(level-2) + result.format(self.id, self.style, self.color, self.bgcolor, self.label, self.tooltip) \
+        return '\t' * (level - 2) + result.format(self.id, self.style, self.color, self.bgcolor, self.label,
+                                                  self.tooltip) \
                + '\n'
 
     def _get_node_attrs(self):
@@ -155,7 +185,7 @@ class DotDigraph(IGroupable):
     def _initial(self, level=1):
         level = 1
 
-        result = ('\n'+'\t'*level).join([
+        result = ('\n' + '\t' * level).join([
             'digraph "explaining graph" {{',
             'bgcolor={0};',
             'id="{1}";',
@@ -163,4 +193,4 @@ class DotDigraph(IGroupable):
             'rankdir={3}'
         ])
 
-        return '\t'*(level-1) + result.format(self.bgcolor, self.id, self.compound, self.rankdir) + '\n'
+        return '\t' * (level - 1) + result.format(self.bgcolor, self.id, self.compound, self.rankdir) + '\n'

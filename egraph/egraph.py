@@ -143,13 +143,56 @@ class ExplainingGraph(PartContainer):
         graph.items.append(DotLink(current, end, self._id_counter))
         self._id_counter += 1
 
-        ExplainingGraph._optimize(graph)
+        ExplainingGraph._optimize(graph, graph)
 
         return graph
 
     @staticmethod
-    def _optimize(graph: DotDigraph):
-        pass
+    def _optimize(graph: IGroupable, main: DotDigraph):
+        ExplainingGraph._optimize_simple_characters(graph, main)
+
+        for item in graph.items:
+            if isinstance(item, IGroupable):
+                ExplainingGraph._optimize(item, main)
+
+    @staticmethod
+    def _optimize_simple_characters(graph: IGroupable, main: DotDigraph):
+        while True:
+            for item in graph.items:
+                if item.comment != Text.__name__:
+                    continue
+
+                neighbor, owner = main.find_neighbor_right(item)
+                # If neighbor is simple node with text too and it's a child of the same subgraph,
+                # then we need to join this two nodes.
+                if neighbor is not None and neighbor.comment == Text.__name__ and owner == graph:
+                    if type(item) is str and type(neighbor) is str:
+                        ids_this = item.id.split('_')
+                        ids_neighbor = neighbor.id.split('_')
+                        ids_new = ids_this[0] + '_' + ids_this[1] + '_' + ids_neighbor[2]
+                    else:
+                        ids_new = item.id
+
+                    item.label += neighbor.label
+                    item.tooltip += neighbor.label
+                    item.id = ids_new
+
+                    # Destroy old node.
+                    owner.items.remove(neighbor)
+
+                    # Find a link between current node and neighbor, then change destination to node after neighbor.
+                    link, owner = main.find_link(item, neighbor)
+                    after, owner = main.find_neighbor_right(neighbor)
+                    link.destination = after
+
+                    # Destroy old link.
+                    link, owner = main.find_link(neighbor, after)
+                    if owner is not None:
+                        owner.items.remove(link)
+
+                    break
+            else:
+                break
 
 
 class Text(Part):
@@ -171,7 +214,7 @@ class Text(Part):
 
     def to_graph(self, current=None, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
-        node = DotNode(self._id, self.text)
+        node = DotNode(self._id, self.text, tooltip=self.text, comment=Text.__name__)
         result = [node]
         id_counter = self._link_with_previous_if_exist(current, id_counter, node, result)
         current = node
