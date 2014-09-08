@@ -141,6 +141,7 @@ class DotDigraph(IGroupable):
     """
 
     def __init__(self, id="explaining_graph", label='', style='solid', bgcolor='white'):
+        # noinspection PyTypeChecker
         IDotable.__init__(self, id, label, style)
         self.items = []
         self.bgcolor = bgcolor
