@@ -24,7 +24,7 @@ class Part(metaclass=abc.ABCMeta):
         """
         Возвращает часть регулярного выражения в Dot-представлении.
 
-        :param DotNode current: Предыдущий узел.
+        :param DotNode|None current: Предыдущий узел.
         :param id_counter: Счётчик id.
         """
         pass
@@ -224,7 +224,7 @@ class Subexpression(PartContainer):
         if len(self._branches) == 1:
             branch = self._branches[0]
             for item in branch:
-                parts, new_current, new_id = item.to_graph(current=current, id_counter=id_counter)
+                parts, new_current, new_id = item.to_graph(current=None, id_counter=id_counter)
                 subgraph.items += parts
                 id_counter = new_id
                 current = new_current
