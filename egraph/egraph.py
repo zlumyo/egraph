@@ -76,6 +76,9 @@ class PartContainer(Part, metaclass=abc.ABCMeta):
         """
         self._branches.append(branch)
 
+    def __getitem__(self, item):
+        return self._branches[item]
+
     def __iter__(self):
         for branch in self._branches:
             yield branch

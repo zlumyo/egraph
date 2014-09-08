@@ -35,7 +35,10 @@ class IGroupable(IDotable, metaclass=abc.ABCMeta):
         level += 1
         result = self._initial(level)
 
-        result += ''.join([('\t'*level) + item.to_dot(level+1) + '\n' for item in self.items])
+        result += ''.join([
+            ('\t'*level) + (item.to_dot(level) if isinstance(item, DotSubgraph) else item.to_dot(level+1)) + '\n'
+            for item in self.items
+        ])
 
         level -= 1
         return result + ('\t'*level) + '}'
@@ -80,7 +83,7 @@ class DotLink(IDotable):
 
     def to_dot(self, level=0):
         return '"nd_{0}" -> "nd_{1}" [id="graphid_{2}", label="{3}", color="{4}", tooltip="{5}", ' \
-               'arrowhead="{6}", style="{7}"]'\
+               'arrowhead="{6}", style="{7}"];'\
             .format(
                 self.source.id,
                 self.destination.id,
@@ -106,8 +109,8 @@ class DotSubgraph(IGroupable):
         self.tooltip = tooltip
 
     def _initial(self, level=0):
-        result = ('\t'*level+'\n').join([
-            'subgraph "cluster_{0}" {',
+        result = ('\n'+'\t'*level).join([
+            'subgraph "cluster_{0}" {{',
             'style={1};',
             'color={2};',
             'bgcolor={3};',
@@ -118,21 +121,22 @@ class DotSubgraph(IGroupable):
             self._get_edge_attrs()
         ])
 
-        return '\t'*(level-1) + result.format(self.id, self.style, self.color, self.bgcolor, self.label, self.tooltip)
+        return '\t'*(level-2) + result.format(self.id, self.style, self.color, self.bgcolor, self.label, self.tooltip) \
+               + '\n'
 
     def _get_node_attrs(self):
         result = 'node ['
 
         result += ', '.join(['{0}="{1}"'.format(k, v) for k, v in self.node_attrs])
 
-        return result + ']'
+        return result + '];'
 
     def _get_edge_attrs(self):
         result = 'edge ['
 
         result += ', '.join(['{0}="{1}"'.format(k, v) for k, v in self.edge_attrs])
 
-        return result + ']'
+        return result + '];'
 
 
 class DotDigraph(IGroupable):
