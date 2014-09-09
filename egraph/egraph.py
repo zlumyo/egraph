@@ -1,6 +1,7 @@
 __author__ = 'Владимир'
 
 from egraph.dot import *
+from enum import Enum
 
 
 class Part(metaclass=abc.ABCMeta):
@@ -212,7 +213,7 @@ class ExplainingGraph(PartContainer):
     def _optimize_asserts(graph: IGroupable, main: DotDigraph):
         while True:
             # Lets find an assert.
-            for _assert in filter(lambda i: isinstance(i, DotNode) and i.comment == "Assert", graph.items):
+            for _assert in filter(lambda i: isinstance(i, DotNode) and i.comment == Assert.__name__, graph.items):
                 need_to_break = False
                 # Find its neighbors (left and right).
                 right_neighbor = main.find_neighbor_right(_assert)
@@ -304,19 +305,41 @@ class Text(Part):
         return result, current, id_counter
 
 
-class BorderAssert(Part):
+class AssertType(Enum):
+    slash_b = 1
+    slash_B = 2
+    circumflex = 3
+    dollar = 4
+
+
+class Assert(Part):
     """
     Представляет простое утверждение в регулярном выражении.
     """
 
-    def __init__(self, id=None, inverse=False):
+    def __init__(self, type: AssertType, id=None):
         Part.__init__(self, id=id)
-        self.inverse = inverse
+        self._type = type
+
+    @property
+    def type(self) -> str:
+        return self._type
+
+    @type.setter
+    def type(self, value: str) -> None:
+        self._type = value
+
+    _assert_strings = {
+        AssertType.slash_b: "a word boundary",
+        AssertType.slash_B: "not a word boundary",
+        AssertType.circumflex: "start of the string",
+        AssertType.dollar: "end of the string"
+    }
 
     def to_graph(self, current=None, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
-        text = "a word boundary" if not self.inverse else "not a word boundary"
-        node = DotNode(self._id, text, comment='Assert')
+        text = self._assert_strings[self.type]
+        node = DotNode(self._id, text, comment=Assert.__name__)
         result = [node]
         id_counter = self._link_with_previous_if_exist(current, id_counter, node, result)
         current = node
