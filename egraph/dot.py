@@ -48,18 +48,28 @@ class IGroupable(IDotable, metaclass=abc.ABCMeta):
         pass
 
     def find_neighbor_right(self, item):
-        # Look over links...
         for link in filter(lambda i: isinstance(i, DotLink), self.items):
-            if link.source is item:             # If source of link is $nd...
-                return link.destination, self   # ...then we found what we were looking for.
+            if link.source is item:
+                return link.destination
 
-        # If we found nothing, then do the same with subgraphs.
         for subgraph in filter(lambda i: isinstance(i, DotSubgraph), self.items):
             result, owner = subgraph.find_neighbor_right(item)
-            if result is not None:      # If result is valid...
-                return result, owner    # ...then the right neighbor of $nd is child of current subgraph.
+            if result is not None:
+                return result
         else:
-            return None, None
+            return None
+
+    def find_neighbor_left(self, item):
+        for link in filter(lambda i: isinstance(i, DotLink), self.items):
+            if link.destination is item:
+                return link.source
+
+        for subgraph in filter(lambda i: isinstance(i, DotSubgraph), self.items):
+            result, owner = subgraph.find_neighbor_right(item)
+            if result is not None:
+                return result
+        else:
+            return None
 
     def find_link(self, source, destination):
         for link in filter(lambda i: isinstance(i, DotLink), self.items):
@@ -72,6 +82,18 @@ class IGroupable(IDotable, metaclass=abc.ABCMeta):
                 return result, owner
         else:
             return None, None
+
+    def find_node_owner(self, node):
+        for item in filter(lambda i: isinstance(i, DotNode), self.items):
+            if node is item:
+                return self
+
+        for subgraph in filter(lambda i: isinstance(i, DotSubgraph), self.items):
+            result = subgraph.find_node_owner(node)
+            if result is not None:
+                return result
+        else:
+            return None
 
 
 class DotNode(IDotable):

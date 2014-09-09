@@ -150,6 +150,7 @@ class ExplainingGraph(PartContainer):
     @staticmethod
     def _optimize(graph: IGroupable, main: DotDigraph):
         ExplainingGraph._optimize_simple_characters(graph, main)
+        ExplainingGraph._optimize_asserts(graph, main)
 
         for item in graph.items:
             if isinstance(item, IGroupable):
@@ -158,11 +159,12 @@ class ExplainingGraph(PartContainer):
     @staticmethod
     def _optimize_simple_characters(graph: IGroupable, main: DotDigraph):
         while True:
-            for item in graph.items:
+            for item in filter(lambda i: isinstance(i, DotNode), graph.items):
                 if item.comment != Text.__name__:
                     continue
 
-                neighbor, owner = main.find_neighbor_right(item)
+                neighbor = main.find_neighbor_right(item)
+                owner = main.find_node_owner(neighbor)
                 # If neighbor is simple node with text too and it's a child of the same subgraph,
                 # then we need to join this two nodes.
                 if neighbor is not None and neighbor.comment == Text.__name__ and owner == graph:
@@ -181,8 +183,8 @@ class ExplainingGraph(PartContainer):
                     owner.items.remove(neighbor)
 
                     # Find a link between current node and neighbor, then change destination to node after neighbor.
-                    link, owner = main.find_link(item, neighbor)
-                    after, owner = main.find_neighbor_right(neighbor)
+                    link, _ = main.find_link(item, neighbor)
+                    after, _ = main.find_neighbor_right(neighbor)
                     link.destination = after
 
                     # Destroy old link.
@@ -190,6 +192,87 @@ class ExplainingGraph(PartContainer):
                     if owner is not None:
                         owner.items.remove(link)
 
+                    break
+            else:
+                break
+
+    @staticmethod
+    def _compute_label(label1, label2):
+        empty = ''
+        if label1 == empty and label2 == empty:
+            return empty
+        elif label1 == empty:
+            return label2
+        elif label2 == empty:
+            return label1
+        else:
+            return label1 + '\n' + label2
+
+    @staticmethod
+    def _optimize_asserts(graph: IGroupable, main: DotDigraph):
+        while True:
+            # Lets find an assert.
+            for _assert in filter(lambda i: isinstance(i, DotNode) and i.comment == "Assert", graph.items):
+                need_to_break = False
+                # Find its neighbors (left and right).
+                right_neighbor = main.find_neighbor_right(_assert)
+                right_owner = main.find_node_owner(right_neighbor)
+                left_neighbor = main.find_neighbor_left(_assert)
+                left_owner = main.find_node_owner(left_neighbor)
+
+                # First case - both neighbors are in same subgraph.
+                if right_neighbor is not None and left_owner is right_owner and right_owner is graph:
+                    # Find links between neighbors and assert.
+                    left_link, _ = main.find_link(left_neighbor, _assert)
+                    right_link, owner = main.find_link(_assert, right_neighbor)
+
+                    left_link.destination = right_link.destination
+                    left_link.label = ExplainingGraph._compute_label(left_link.label, _assert.label)
+                    left_link.tooltip = left_link.label
+
+                    owner.items.remove(right_link)
+                    graph.items.remove(_assert)
+                    need_to_break = True
+                # Second case - neighbors are not in the same subgraphs, but right neighbor is in same as assert.
+                elif right_neighbor is not None and right_owner is not left_owner \
+                        and left_owner is not graph and right_owner is graph:
+                    right_link, _ = main.find_link(_assert, right_neighbor)
+                    right_link.label = ExplainingGraph._compute_label(_assert.label, right_link.label)
+                    right_link.tooltip = right_link.label
+                    _assert.shape = 'point'
+                    _assert.label = ''
+                # Third case - neighbors are not in the same subgraphs, but left neighbor is in same as assert.
+                elif right_neighbor is not None and right_owner is not left_owner \
+                        and left_owner is graph and right_owner is not graph:
+                    left_link, _ = main.find_link(left_neighbor, _assert)
+                    left_link.label = ExplainingGraph._compute_label(left_link.label, _assert.label)
+                    left_link.tooltip = left_link.label
+                    _assert.shape = 'point'
+                    _assert.label = ''
+                else:  # Fourth case - neighbors are not in the same subgraphs and no one in current subgraph.
+                    # If right neighbor is existing...
+                    if right_neighbor is not None:
+                        # Find links between neighbors and assert.
+                        left_link, _ = main.find_link(left_neighbor, _assert)
+                        right_link, owner = main.find_link(_assert, right_neighbor)
+
+                        left_link.destination = right_link.destination
+                        left_link.label = _assert.label
+                        left_link.tooltip = left_link.label
+
+                        owner.items.remove(right_link)
+                        graph.items.remove(_assert)
+                    else:  # Right neighbor is not existing, so we just replace it with point-node.
+                        point = DotNode(shape="point", comment="Point")
+                        new_link = DotLink(_assert, point, _assert.label, tooltip=_assert.label)
+                        _assert.shape = 'point'
+                        _assert.label = ''
+
+                        graph.items.extend([point, new_link])
+
+                    need_to_break = True
+
+                if need_to_break:
                     break
             else:
                 break
@@ -233,7 +316,7 @@ class BorderAssert(Part):
     def to_graph(self, current=None, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
         text = "a word boundary" if not self.inverse else "not a word boundary"
-        node = DotNode(self._id, text)
+        node = DotNode(self._id, text, comment='Assert')
         result = [node]
         id_counter = self._link_with_previous_if_exist(current, id_counter, node, result)
         current = node
@@ -272,9 +355,11 @@ class Subexpression(PartContainer):
                 id_counter = new_id
                 current = new_current
         else:
-            start = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white")
+            start = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
+                            comment="Point")
             id_counter += 1
-            finish = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white")
+            finish = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
+                             comment="Point")
             id_counter += 1
 
             subgraph.items += [start, finish]
