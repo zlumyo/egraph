@@ -372,11 +372,20 @@ class Subexpression(PartContainer):
 
         if len(self._branches) == 1:
             branch = self._branches[0]
-            for item in branch:
-                parts, new_current, new_id = item.to_graph(current=None, id_counter=id_counter)
-                subgraph.items += parts
-                id_counter = new_id
-                current = new_current
+
+            if len(branch) == 0:
+                point = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
+                                comment="Point")
+                id_counter += 1
+
+                subgraph.items.append(point)
+                current = point
+            else:
+                for item in branch:
+                    parts, new_current, new_id = item.to_graph(current=None, id_counter=id_counter)
+                    subgraph.items += parts
+                    id_counter = new_id
+                    current = new_current
         else:
             start = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
                             comment="Point")
@@ -386,7 +395,6 @@ class Subexpression(PartContainer):
             id_counter += 1
 
             subgraph.items += [start, finish]
-            id_counter = self._link_with_previous_if_exist(current, id_counter, start, subgraph.items)
 
             for branch in self._branches:
                 current = start

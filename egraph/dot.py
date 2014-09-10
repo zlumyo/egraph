@@ -53,7 +53,7 @@ class IGroupable(IDotable, metaclass=abc.ABCMeta):
                 return link.destination
 
         for subgraph in filter(lambda i: isinstance(i, DotSubgraph), self.items):
-            result, owner = subgraph.find_neighbor_right(item)
+            result = subgraph.find_neighbor_right(item)
             if result is not None:
                 return result
         else:
@@ -65,7 +65,7 @@ class IGroupable(IDotable, metaclass=abc.ABCMeta):
                 return link.source
 
         for subgraph in filter(lambda i: isinstance(i, DotSubgraph), self.items):
-            result, owner = subgraph.find_neighbor_right(item)
+            result = subgraph.find_neighbor_right(item)
             if result is not None:
                 return result
         else:
