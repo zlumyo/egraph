@@ -322,11 +322,11 @@ class Assert(Part):
         self._type = type
 
     @property
-    def type(self) -> str:
+    def type(self) -> AssertType:
         return self._type
 
     @type.setter
-    def type(self, value: str) -> None:
+    def type(self, value: str):
         self._type = value
 
     _assert_strings = {
@@ -411,4 +411,59 @@ class Subexpression(PartContainer):
 
         result[1].destination = subgraph.items[0]
 
+        return result, current, id_counter
+
+
+class CharflagType(Enum):
+    dot = 1
+    slashd = 2
+    slashh = 3
+    slashs = 4
+    slashv = 5
+    slashw = 6
+    slashd_neg = 7
+    slashh_neg = 8
+    slashs_neg = 9
+    slashv_neg = 10
+    slashw_neg = 11
+
+
+class Charflag(Part):
+    """
+    Представляет символьный флаг в регулярном выражении.
+    """
+
+    def __init__(self, type: CharflagType, id=None):
+        Part.__init__(self, id=id)
+        self._type = type
+
+    @property
+    def type(self) -> CharflagType:
+        return self._type
+
+    @type.setter
+    def type(self, value: CharflagType):
+        self._type = value
+
+    _charflag_strings = {
+        CharflagType.dot: "any character",
+        CharflagType.slashd: "a decimal digit",
+        CharflagType.slashh: "a horizontal white space character",
+        CharflagType.slashs: "a white space",
+        CharflagType.slashv: "a vertical white space character",
+        CharflagType.slashw: "a word character",
+        CharflagType.slashd_neg: "not a decimal digit",
+        CharflagType.slashh_neg: "not a horizontal white space character",
+        CharflagType.slashs_neg: "not a white space",
+        CharflagType.slashv_neg: "not a vertical white space character",
+        CharflagType.slashw_neg: "not a word character"
+    }
+
+    def to_graph(self, current=None, id_counter=1):
+        id_counter = self._set_id_if_not_exist(id_counter)
+        text = self._charflag_strings[self.type]
+        node = DotNode(self._id, text, comment=Charflag.__name__, color='hotpink')
+        result = [node]
+        id_counter = self._link_with_previous_if_exist(current, id_counter, node, result)
+        current = node
         return result, current, id_counter
