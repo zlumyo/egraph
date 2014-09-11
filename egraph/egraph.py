@@ -351,7 +351,7 @@ class Subexpression(PartContainer):
     Представляет подвыражение в регулярном выражении.
     """
 
-    def __init__(self, id=None, number=0):
+    def __init__(self, number, id=None):
         PartContainer.__init__(self, id=id)
         self._number = number
 
@@ -463,6 +463,38 @@ class Charflag(Part):
         id_counter = self._set_id_if_not_exist(id_counter)
         text = self._charflag_strings[self.type]
         node = DotNode(self._id, text, comment=Charflag.__name__, color='hotpink')
+        result = [node]
+        id_counter = self._link_with_previous_if_exist(current, id_counter, node, result)
+        current = node
+        return result, current, id_counter
+
+
+class Backreference(Part):
+    """
+    Представляет обратную ссылку в регулярном выражении.
+    """
+
+    def __init__(self, number, id=None):
+        Part.__init__(self, id=id)
+        self._number = number
+
+    @property
+    def number(self) -> int:
+        return self._number
+
+    @number.setter
+    def number(self, value: int) -> None:
+        self._number = value
+
+    def to_graph(self, current=None, id_counter=1):
+        id_counter = self._set_id_if_not_exist(id_counter)
+        node = DotNode(
+            self._id,
+            "backreference #" + str(self.number),
+            tooltip="backreference",
+            comment=Backreference.__name__,
+            color="blue"
+        )
         result = [node]
         id_counter = self._link_with_previous_if_exist(current, id_counter, node, result)
         current = node
