@@ -351,7 +351,7 @@ class Subexpression(PartContainer):
     Представляет подвыражение в регулярном выражении.
     """
 
-    def __init__(self, number, id=None):
+    def __init__(self, number=None, id=None):
         PartContainer.__init__(self, id=id)
         self._number = number
 
@@ -365,7 +365,13 @@ class Subexpression(PartContainer):
 
     def to_graph(self, current=None, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
-        subgraph = DotSubgraph(id=self._id, label="subexpression #{0}".format(self.number), tooltip="subexpression")
+        if self.number is not None:
+            text = "subexpression #{0}".format(self.number)
+            tooltip = "subexpression"
+        else:
+            text = ""
+            tooltip = "grouping"
+        subgraph = DotSubgraph(id=self._id, label=text, tooltip=tooltip)
         result = [subgraph]
         """:type : list[IDotable|DotLink]"""
         id_counter = self._link_with_previous_if_exist(current, id_counter, None, result)
