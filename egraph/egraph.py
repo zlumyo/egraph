@@ -360,7 +360,7 @@ class Subexpression(PartContainer):
         return self._number
 
     @number.setter
-    def number(self, value: int) -> None:
+    def number(self, value: int):
         self._number = value
 
     def to_graph(self, current=None, id_counter=1):
@@ -483,7 +483,7 @@ class Backreference(Part):
         return self._number
 
     @number.setter
-    def number(self, value: int) -> None:
+    def number(self, value: int):
         self._number = value
 
     def to_graph(self, current=None, id_counter=1):
@@ -493,6 +493,57 @@ class Backreference(Part):
             "backreference #" + str(self.number),
             tooltip="backreference",
             comment=Backreference.__name__,
+            color="blue"
+        )
+        result = [node]
+        id_counter = self._link_with_previous_if_exist(current, id_counter, node, result)
+        current = node
+        return result, current, id_counter
+
+
+class SubexpressionCall(Part):
+    """
+    Представляет вызов подмаски в регулярном выражении.
+    """
+
+    def __init__(self, subexpr_ref=None, is_recursive=False, id=None):
+        Part.__init__(self, id=id)
+        self._subexpr_ref = subexpr_ref
+        self._is_recursive = is_recursive
+
+    @property
+    def is_recursive(self) -> bool:
+        return self._is_recursive
+
+    @is_recursive.setter
+    def is_recursive(self, value: bool):
+        self._is_recursive = value
+
+    @property
+    def subexpr_ref(self):
+        return self._subexpr_ref
+
+    @subexpr_ref.setter
+    def subexpr_ref(self, value):
+        self._subexpr_ref = value
+
+    def to_graph(self, current=None, id_counter=1):
+        id_counter = self._set_id_if_not_exist(id_counter)
+
+        if self.subexpr_ref is not None:
+            text = "call of the subpattern " + ("#{0}" if type(self.subexpr_ref) is int else '"{0}"')
+            text = text.format(str(self.subexpr_ref))
+        else:
+            text = "call of the whole regular expression"
+
+        if self.is_recursive:
+            text = "recursive " + text
+
+        node = DotNode(
+            self._id,
+            text,
+            tooltip="subexpression call",
+            comment=SubexpressionCall.__name__,
             color="blue"
         )
         result = [node]
