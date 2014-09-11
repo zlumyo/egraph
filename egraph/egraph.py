@@ -364,6 +364,7 @@ class Subexpression(PartContainer):
         self._number = value
 
     def to_graph(self, current=None, id_counter=1):
+        save_current = current
         id_counter = self._set_id_if_not_exist(id_counter)
         if self.number is not None:
             text = "subexpression #{0}".format(self.number)
@@ -415,9 +416,10 @@ class Subexpression(PartContainer):
 
             current = finish
 
-        result[1].destination = subgraph.items[0]
+        if len(result) > 1:
+            result[1].destination = subgraph.items[0]
 
-        return result, current, id_counter
+        return (result, current, id_counter) if save_current is not None else result[0]
 
 
 class CharflagType(Enum):
@@ -556,3 +558,100 @@ class SubexpressionCall(Part):
         id_counter = self._link_with_previous_if_exist(current, id_counter, node, result)
         current = node
         return result, current, id_counter
+
+
+class Quantifier(PartContainer):
+    """
+    Представляет квантификатор в регулярном выражении.
+    """
+
+    def __init__(self, min, max=None, is_greedy=True, id=None):
+        PartContainer.__init__(self, id=id)
+
+        if min < 0 or (max is not None and max < 0):
+            raise ValueError("Границы не могут быть отрицательными.")
+
+        if max is not None and max < min:
+            raise ValueError("Верхняя граница не может быть меньше нижней.")
+
+        self._min = min
+        self._max = max
+        self._is_greedy = is_greedy
+
+    @property
+    def min(self) -> int:
+        return self._min
+
+    @min.setter
+    def min(self, value: int):
+        self._min = value
+
+    @property
+    def max(self) -> int:
+        return self._max
+
+    @max.setter
+    def max(self, value: int):
+        self._max = value
+
+    @property
+    def is_greedy(self) -> bool:
+        return self._is_greedy
+
+    @is_greedy.setter
+    def is_greedy(self, value: bool):
+        self._is_greedy = value
+
+    def to_graph(self, current=None, id_counter=1):
+        save_current = current
+        id_counter = self._set_id_if_not_exist(id_counter)
+        text = "from {0} to {1}".format(self.min, 'infinity' if self.max is None else self.max)
+        tooltip = "quantifier"
+        subgraph = DotSubgraph(id=self._id, label=text, tooltip=tooltip, style='dotted')
+        result = [subgraph]
+        """:type : list[IDotable|DotLink]"""
+        id_counter = self._link_with_previous_if_exist(current, id_counter, None, result)
+
+        if len(self._branches) == 1:
+            branch = self._branches[0]
+
+            if len(branch) == 0:
+                point = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
+                                comment="Point")
+                id_counter += 1
+
+                subgraph.items.append(point)
+                current = point
+            else:
+                for item in branch:
+                    parts, new_current, new_id = item.to_graph(current=None, id_counter=id_counter)
+                    subgraph.items += parts
+                    id_counter = new_id
+                    current = new_current
+        else:
+            start = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
+                            comment="Point")
+            id_counter += 1
+            finish = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
+                             comment="Point")
+            id_counter += 1
+
+            subgraph.items += [start, finish]
+
+            for branch in self._branches:
+                current = start
+                for item in branch:
+                    parts, new_current, new_id = item.to_graph(current=current, id_counter=id_counter)
+                    subgraph.items += parts
+                    id_counter = new_id
+                    current = new_current
+
+                subgraph.items.append(DotLink(current, finish, id_counter))
+                id_counter += 1
+
+            current = finish
+
+        if len(result) > 1:
+            result[1].destination = subgraph.items[0]
+
+        return (result, current, id_counter) if save_current is not None else result[0]
