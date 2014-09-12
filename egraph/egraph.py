@@ -397,8 +397,9 @@ class Subexpression(PartContainer):
                 subgraph.items.append(point)
                 current = point
             else:
+                current = None
                 for item in branch:
-                    parts, new_current, new_id = item.to_graph(current=None, id_counter=id_counter)
+                    parts, new_current, new_id = item.to_graph(current=current, id_counter=id_counter)
                     subgraph.items += parts
                     id_counter = new_id
                     current = new_current
@@ -635,8 +636,9 @@ class Quantifier(PartContainer):
                 subgraph.items.append(point)
                 current = point
             else:
+                current = None
                 for item in branch:
-                    parts, new_current, new_id = item.to_graph(current=None, id_counter=id_counter)
+                    parts, new_current, new_id = item.to_graph(current=current, id_counter=id_counter)
                     subgraph.items += parts
                     id_counter = new_id
                     current = new_current
@@ -724,10 +726,12 @@ class AssertComplex(PartContainer):
 
                 subgraph.items.append(point)
             else:
+                current = None
                 for item in branch:
-                    parts, new_current, new_id = item.to_graph(current=None, id_counter=id_counter)
+                    parts, new_current, new_id = item.to_graph(current=current, id_counter=id_counter)
                     subgraph.items += parts
                     id_counter = new_id
+                    current = new_current
         else:
             start = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
                             comment="Point")
