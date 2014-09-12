@@ -123,9 +123,9 @@ class ExplainingGraph(PartContainer):
                 self._id_counter = new_id
                 current = new_current
         else:
-            start = DotNode(self._id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white")
+            start = DotNode(self._id_counter, tooltip="alternative", shape="point", fillcolor="white")
             self._id_counter += 1
-            finish = DotNode(self._id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white")
+            finish = DotNode(self._id_counter, tooltip="alternative", shape="point", fillcolor="white")
             self._id_counter += 1
 
             graph.items += [start, finish]
@@ -164,14 +164,14 @@ class ExplainingGraph(PartContainer):
     def _optimize_simple_characters(graph: IGroupable, main: DotDigraph):
         while True:
             for item in filter(lambda i: isinstance(i, DotNode), graph.items):
-                if item.comment != Text.__name__:
+                if item._comment != Text.__name__:
                     continue
 
                 neighbor = main.find_neighbor_right(item)
                 owner = main.find_node_owner(neighbor)
                 # If neighbor is simple node with text too and it's a child of the same subgraph,
                 # then we need to join this two nodes.
-                if neighbor is not None and neighbor.comment == Text.__name__ and owner == graph:
+                if neighbor is not None and neighbor._comment == Text.__name__ and owner == graph:
                     if type(item) is str and type(neighbor) is str:
                         ids_this = item.id.split('_')
                         ids_neighbor = neighbor.id.split('_')
@@ -179,8 +179,8 @@ class ExplainingGraph(PartContainer):
                     else:
                         ids_new = item.id
 
-                    item.label += neighbor.label
-                    item.tooltip += neighbor.label
+                    item._label += neighbor._label
+                    item._tooltip += neighbor._label
                     item.id = ids_new
 
                     # Destroy old node.
@@ -216,7 +216,10 @@ class ExplainingGraph(PartContainer):
     def _optimize_asserts(graph: IGroupable, main: DotDigraph):
         while True:
             # Lets find an assert.
-            for _assert in filter(lambda i: isinstance(i, DotNode) and i.comment == Assert.__name__, graph.items):
+            for _assert in filter(
+                    lambda i: isinstance(i, DotNode) and i._comment == Assert.__name__,
+                    graph.items
+            ):
                 need_to_break = False
                 # Find its neighbors (left and right).
                 right_neighbor = main.find_neighbor_right(_assert)
@@ -231,8 +234,8 @@ class ExplainingGraph(PartContainer):
                     right_link, owner = main.find_link(_assert, right_neighbor)
 
                     left_link.destination = right_link.destination
-                    left_link.label = ExplainingGraph._compute_label(left_link.label, _assert.label)
-                    left_link.tooltip = left_link.label
+                    left_link._label = ExplainingGraph._compute_label(left_link._label, _assert._label)
+                    left_link.tooltip = left_link._label
 
                     owner.items.remove(right_link)
                     graph.items.remove(_assert)
@@ -241,18 +244,18 @@ class ExplainingGraph(PartContainer):
                 elif right_neighbor is not None and right_owner is not left_owner \
                         and left_owner is not graph and right_owner is graph:
                     right_link, _ = main.find_link(_assert, right_neighbor)
-                    right_link.label = ExplainingGraph._compute_label(_assert.label, right_link.label)
-                    right_link.tooltip = right_link.label
+                    right_link._label = ExplainingGraph._compute_label(_assert._label, right_link._label)
+                    right_link.tooltip = right_link._label
                     _assert.shape = 'point'
-                    _assert.label = ''
+                    _assert._label = ''
                 # Third case - neighbors are not in the same subgraphs, but left neighbor is in same as assert.
                 elif right_neighbor is not None and right_owner is not left_owner \
                         and left_owner is graph and right_owner is not graph:
                     left_link, _ = main.find_link(left_neighbor, _assert)
-                    left_link.label = ExplainingGraph._compute_label(left_link.label, _assert.label)
-                    left_link.tooltip = left_link.label
+                    left_link._label = ExplainingGraph._compute_label(left_link._label, _assert._label)
+                    left_link.tooltip = left_link._label
                     _assert.shape = 'point'
-                    _assert.label = ''
+                    _assert._label = ''
                 else:  # Fourth case - neighbors are not in the same subgraphs and no one in current subgraph.
                     # If right neighbor is existing...
                     if right_neighbor is not None:
@@ -261,16 +264,16 @@ class ExplainingGraph(PartContainer):
                         right_link, owner = main.find_link(_assert, right_neighbor)
 
                         left_link.destination = right_link.destination
-                        left_link.label = _assert.label
-                        left_link.tooltip = left_link.label
+                        left_link._label = _assert._label
+                        left_link.tooltip = left_link._label
 
                         owner.items.remove(right_link)
                         graph.items.remove(_assert)
                     else:  # Right neighbor is not existing, so we just replace it with point-node.
                         point = DotNode(shape="point", comment="Point")
-                        new_link = DotLink(_assert, point, _assert.label, tooltip=_assert.label)
+                        new_link = DotLink(_assert, point, _assert._label, tooltip=_assert._label)
                         _assert.shape = 'point'
-                        _assert.label = ''
+                        _assert._label = ''
 
                         graph.items.extend([point, new_link])
 

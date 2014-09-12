@@ -10,9 +10,25 @@ class IDotable(metaclass=abc.ABCMeta):
     """
 
     def __init__(self, id=-1, label='', style=''):
-        self.id = id
-        self.label = label
+        self._id = id
+        self._label = label
         self.style = style
+
+    @property
+    def id(self):
+        return '"graphid_{0}"'.format(self._id)
+
+    @id.setter
+    def id(self, value):
+        self._id = value
+
+    @property
+    def label(self):
+        return '"{0}"'.format(self._label)
+
+    @label.setter
+    def label(self, value):
+        self._label = value
 
     @abc.abstractmethod
     def to_dot(self, level=0):
@@ -24,12 +40,10 @@ class IGroupable(IDotable, metaclass=abc.ABCMeta):
     Абстрактный контейнер dot-сущностей.
     """
 
-    def __init__(self, id=-1, label='', style='solid', bgcolor='white'):
+    def __init__(self, id=-1, label='', style='', bgcolor=''):
         IDotable.__init__(self, id, label, style)
         self.items = []
         self.bgcolor = bgcolor
-        self.node_attrs = {}
-        self.edge_attrs = {}
 
     def to_dot(self, level=0):
         level += 1
@@ -101,20 +115,46 @@ class DotNode(IDotable):
     Узел в dot-коде.
     """
 
-    def __init__(self, id=-1, label='', style='solid', color='black', tooltip='', shape='ellipse', fillcolor='white',
-                 comment=""):
+    def __init__(self, id=-1, label='', style='', color='', tooltip='', shape='', fillcolor='',
+                 comment=''):
         IDotable.__init__(self, id, label, style)
         self.shape = shape
         self.fillcolor = fillcolor
         self.color = color
-        self.tooltip = tooltip
-        self.comment = comment
+        self._tooltip = tooltip
+        self._comment = comment
+
+    @property
+    def comment(self):
+        return '"{0}"'.format(self._comment)
+
+    @comment.setter
+    def comment(self, value):
+        self._comment = value
+
+    @property
+    def tooltip(self):
+        return '"{0}"'.format(self._tooltip)
+
+    @tooltip.setter
+    def tooltip(self, value):
+        self._tooltip = value
 
     def to_dot(self, level=0):
-        # label и tooltip эскейпить на html
-        return '"nd_{0}" [shape={1}, id="graphid_{0}", color={2}, style={3}, label="{4}", fillcolor={5},' \
-               ' tooltip="{6}"];' \
-            .format(self.id, self.shape, self.color, self.style, self.label, self.fillcolor, self.tooltip)
+        #TODO label и tooltip эскейпить на html
+        attrs = filter(lambda i: i[1] != '', {
+            'id': self.id,
+            'label': self.label,
+            'style': self.style,
+            'shape': self.shape,
+            'fillcolor': self.fillcolor,
+            'color': self.color,
+            'tooltip': self.tooltip,
+            'comment': self.comment
+        }.items())
+
+        return '"nd_{0}" ['.format(self._id) + \
+               ', '.join([k + '=' + v for k, v in attrs]) + ']'
 
 
 class DotLink(IDotable):
@@ -122,29 +162,46 @@ class DotLink(IDotable):
     Связь в dot-коде.
     """
 
-    def __init__(self, source: DotNode, destination: DotNode, id=-1, label='', style='solid', color='black', tooltip='',
-                 arrowhead='normal', comment=""):
+    def __init__(self, source: DotNode, destination: DotNode, id=-1, label='', style='', color='', tooltip='',
+                 arrowhead='', comment=''):
         IDotable.__init__(self, id, label, style)
         self.source = source
         self.destination = destination
         self.arrowhead = arrowhead
         self.color = color
-        self.tooltip = tooltip
-        self.comment = comment
+        self._tooltip = tooltip
+        self._comment = comment
+
+    @property
+    def comment(self):
+        return '"{0}"'.format(self._comment)
+
+    @comment.setter
+    def comment(self, value):
+        self._comment = value
+
+    @property
+    def tooltip(self):
+        return '"{0}"'.format(self._tooltip)
+
+    @tooltip.setter
+    def tooltip(self, value):
+        self._tooltip = value
 
     def to_dot(self, level=0):
-        return '"nd_{0}" -> "nd_{1}" [id="graphid_{2}", label="{3}", color="{4}", tooltip="{5}", ' \
-               'arrowhead="{6}", style="{7}"];' \
-            .format(
-            self.source.id,
-            self.destination.id,
-            self.id,
-            self.label,
-            self.color,
-            self.tooltip,
-            self.arrowhead,
-            self.style
-        )
+        #TODO label и tooltip эскейпить на html
+        attrs = filter(lambda i: i[1] != '', {
+            'id': self.id,
+            'label': self.label,
+            'style': self.style,
+            'color': self.color,
+            'tooltip': self.tooltip,
+            'comment': self.comment,
+            'arrowhead': self.arrowhead
+        }.items())
+
+        return '"nd_{0}" -> "nd_{1}" ['.format(self.source._id, self.destination._id) + \
+               ', '.join([k + '=' + v for k, v in attrs]) + ']'
 
 
 class DotSubgraph(IGroupable):
@@ -152,43 +209,47 @@ class DotSubgraph(IGroupable):
     Подграф в dot-коде.
     """
 
-    def __init__(self, id=-1, label='', style='solid', bgcolor='white', color='black', tooltip=''):
+    def __init__(self, id=-1, label='', style='', bgcolor='', color='', tooltip=''):
         IGroupable.__init__(self, id, label, style, bgcolor)
-        self.entry = None
-        self.exit = None
         self.color = color
-        self.tooltip = tooltip
+        self._tooltip = tooltip
+        self.edge_attrs = {}
+
+    @property
+    def tooltip(self):
+        return '"{0}"'.format(self._tooltip)
+
+    @tooltip.setter
+    def tooltip(self, value):
+        self._tooltip = value
 
     def _initial(self, level=0):
-        result = ('\n' + '\t' * level).join([
-            'subgraph "cluster_{0}" {{',
-            'style={1};',
-            'color={2};',
-            'bgcolor={3};',
-            'label="{4}";',
-            'id="graphid_{0}";',
-            'tooltip="{5}";',
-            self._get_node_attrs(),
-            self._get_edge_attrs()
-        ])
+        attrs = filter(lambda i: i[1] != '', {
+            'id': self.id,
+            'label': self.label,
+            'style': self.style,
+            'color': self.color,
+            'tooltip': self.tooltip,
+            'bgcolor': self.bgcolor
+        }.items())
 
-        return '\t' * (level - 2) + result.format(self.id, self.style, self.color, self.bgcolor, self.label,
-                                                  self.tooltip) \
-               + '\n'
+        result = ('\n' + '\t' * level).join(
+            ['subgraph "cluster_{0}" {{'.format(self._id)] +
+            [k+'='+v for k, v in attrs] +
+            [self._get_edge_attrs()]
+        )
 
-    def _get_node_attrs(self):
-        result = 'node ['
-
-        result += ', '.join(['{0}="{1}"'.format(k, v) for k, v in self.node_attrs.items()])
-
-        return result + '];'
+        return '\t' * (level - 2) + result + '\n'
 
     def _get_edge_attrs(self):
-        result = 'edge ['
+        if len(self.edge_attrs) != 0:
+            result = 'edge ['
 
-        result += ', '.join(['{0}="{1}"'.format(k, v) for k, v in self.edge_attrs.items()])
+            result += ', '.join(['{0}="{1}"'.format(k, v) for k, v in self.edge_attrs.items()])
 
-        return result + '];'
+            return result + '];'
+        else:
+            return ''
 
 
 class DotDigraph(IGroupable):
@@ -196,23 +257,24 @@ class DotDigraph(IGroupable):
     Главный граф в dot-коде.
     """
 
-    def __init__(self, id="explaining_graph", label='', style='solid', bgcolor='white'):
+    def __init__(self, id=-1, label='', style='', bgcolor=''):
         # noinspection PyTypeChecker
-        IDotable.__init__(self, id, label, style)
+        IGroupable.__init__(self, 'explaining_graph', label, style, bgcolor)
         self.items = []
-        self.bgcolor = bgcolor
         self.compound = 'true'
         self.rankdir = 'LR'
 
     def _initial(self, level=1):
         level = 1
 
-        result = ('\n' + '\t' * level).join([
-            'digraph "explaining graph" {{',
-            'bgcolor={0};',
-            'id="{1}";',
-            'compound={2}',
-            'rankdir={3}'
-        ])
+        attrs = filter(lambda i: i[1] != '', {
+            'bgcolor': self.bgcolor,
+            'compound': self.compound,
+            'rankdir': self.rankdir
+        }.items())
 
-        return '\t' * (level - 1) + result.format(self.bgcolor, self.id, self.compound, self.rankdir) + '\n'
+        result = ('\n' + '\t' * level).join(
+            ['digraph "{0}" {{'.format(self._id)] + [k+'='+v for k, v in attrs]
+        )
+
+        return '\t' * (level - 1) + result + '\n'
