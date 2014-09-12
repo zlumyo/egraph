@@ -701,7 +701,7 @@ class AssertComplex(PartContainer):
         enter = DotNode(id_counter, color="black", tooltip="assert", shape="point", fillcolor="white", comment="Point")
         id_counter += 1
         # noinspection PyTypeChecker
-        link = DotLink(enter, None, id_counter)
+        link = DotLink(enter, None, id_counter, color=color)
         id_counter += 1
 
         result = [enter, link, subgraph]
