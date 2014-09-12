@@ -111,6 +111,9 @@ class ExplainingGraph(PartContainer):
         self._id_counter += 1
         graph.items.append(end)
 
+        if len(self._branches) == 0:
+            self._branches.append([])
+
         current = begin
         if len(self._branches) == 1:
             branch = self._branches[0]
@@ -377,6 +380,9 @@ class Subexpression(PartContainer):
         """:type : list[IDotable|DotLink]"""
         id_counter = self._link_with_previous_if_exist(current, id_counter, None, result)
 
+        if len(self._branches) == 0:
+            self._branches.append([])
+
         if len(self._branches) == 1:
             branch = self._branches[0]
 
@@ -419,7 +425,7 @@ class Subexpression(PartContainer):
         if len(result) > 1:
             result[1].destination = subgraph.items[0]
 
-        return (result, current, id_counter) if save_current is not None else result[0]
+        return (result, current, id_counter) if save_current is not None else subgraph
 
 
 class CharflagType(Enum):
@@ -612,6 +618,9 @@ class Quantifier(PartContainer):
         """:type : list[IDotable|DotLink]"""
         id_counter = self._link_with_previous_if_exist(current, id_counter, None, result)
 
+        if len(self._branches) == 0:
+            self._branches.append([])
+
         if len(self._branches) == 1:
             branch = self._branches[0]
 
@@ -654,4 +663,89 @@ class Quantifier(PartContainer):
         if len(result) > 1:
             result[1].destination = subgraph.items[0]
 
-        return (result, current, id_counter) if save_current is not None else result[0]
+        return (result, current, id_counter) if save_current is not None else subgraph
+
+
+class AssertComplexType(Enum):
+    pla = 1
+    plb = 2
+    nla = 3
+    nlb = 4
+
+
+class AssertComplex(PartContainer):
+    """
+    Представляет сложный ассерт в регулярном выражении.
+    """
+
+    def __init__(self, type: AssertComplexType, id=None):
+        PartContainer.__init__(self, id=id)
+        self._type = type
+
+    @property
+    def type(self) -> AssertComplexType:
+        return self._type
+
+    @type.setter
+    def type(self, value: AssertComplexType):
+        self._type = value
+
+    def to_graph(self, current=None, id_counter=1):
+        save_current = current
+        id_counter = self._set_id_if_not_exist(id_counter)
+        tooltip = "assert"
+        subgraph = DotSubgraph(id=self._id, tooltip=tooltip, color='grey')
+        color = 'green' if self.type == AssertComplexType.pla or self.type == AssertComplexType.plb else 'red'
+        subgraph.edge_attrs = {'style': 'dashed'}
+        subgraph.node_attrs = {'style': 'dotted'}
+        enter = DotNode(id_counter, color="black", tooltip="assert", shape="point", fillcolor="white", comment="Point")
+        id_counter += 1
+        # noinspection PyTypeChecker
+        link = DotLink(enter, None, id_counter)
+        id_counter += 1
+
+        result = [enter, link, subgraph]
+        """:type : list[IDotable|DotLink]"""
+        id_counter = self._link_with_previous_if_exist(current, id_counter, enter, result)
+
+        if len(self._branches) == 0:
+            self._branches.append([])
+
+        if len(self._branches) == 1:
+            branch = self._branches[0]
+
+            if len(branch) == 0:
+                point = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
+                                comment="Point")
+                id_counter += 1
+
+                subgraph.items.append(point)
+            else:
+                for item in branch:
+                    parts, new_current, new_id = item.to_graph(current=None, id_counter=id_counter)
+                    subgraph.items += parts
+                    id_counter = new_id
+        else:
+            start = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
+                            comment="Point")
+            id_counter += 1
+            finish = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
+                             comment="Point")
+            id_counter += 1
+
+            subgraph.items += [start, finish]
+
+            for branch in self._branches:
+                current = start
+                for item in branch:
+                    parts, new_current, new_id = item.to_graph(current=current, id_counter=id_counter)
+                    subgraph.items += parts
+                    id_counter = new_id
+                    current = new_current
+
+                subgraph.items.append(DotLink(current, finish, id_counter))
+                id_counter += 1
+
+        link.destination = subgraph.items[0]
+
+        return (result, enter, id_counter) if save_current is not None else subgraph

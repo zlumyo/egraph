@@ -179,14 +179,14 @@ class DotSubgraph(IGroupable):
     def _get_node_attrs(self):
         result = 'node ['
 
-        result += ', '.join(['{0}="{1}"'.format(k, v) for k, v in self.node_attrs])
+        result += ', '.join(['{0}="{1}"'.format(k, v) for k, v in self.node_attrs.items()])
 
         return result + '];'
 
     def _get_edge_attrs(self):
         result = 'edge ['
 
-        result += ', '.join(['{0}="{1}"'.format(k, v) for k, v in self.edge_attrs])
+        result += ', '.join(['{0}="{1}"'.format(k, v) for k, v in self.edge_attrs.items()])
 
         return result + '];'
 
