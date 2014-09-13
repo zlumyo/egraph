@@ -1356,6 +1356,46 @@ class AssertComplex(PartContainer):
         return (result, enter, id_counter) if save_current is not None else subgraph
 
 
+class Range:
+    """
+    Представляет диапазон в символьном классе.
+    """
+
+    def __init__(self, start: str, end: str):
+        self._check_range(start, end)
+        self._start = start[0]
+        self._end = end[0]
+
+    @property
+    def start(self) -> str:
+        return self._start
+
+    @start.setter
+    def start(self, value: str):
+        self._check_range(value, self.end)
+        self._start = value[0]
+
+    @property
+    def end(self) -> str:
+        return self._end
+
+    @end.setter
+    def end(self, value: str):
+        self._check_range(self.start, value)
+        self._end = value[0]
+
+    def __str__(self):
+        return "from {0} to {1}".format(self.start, self.end)
+
+    def __cmp__(self, other: Range):
+        return self.start == other.start and self.end == other.end
+
+    @staticmethod
+    def _check_range(start: str, end: str):
+        if ord(start[0]) > ord(end[0]):
+            raise ValueError("Начало интервала больше конца.")
+
+
 class CharacterClass(Part):
     """
     Символьный класс в регулярном выражении.
@@ -1377,7 +1417,7 @@ class CharacterClass(Part):
     def add_part(self, value):
         allowed_types = [Text, Charflag]
         if allowed_types.count(type(value)) == 0:
-            raise ValueError('Недопустимый тип части символьного класса!')
+            raise ValueError('Недопустимый тип части символьного класса.')
         if isinstance(value, Text):
             self._parts[0] += value
         elif self._parts.count(value) == 0:
