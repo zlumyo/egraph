@@ -125,6 +125,10 @@ class DotNode(IDotable):
         self._comment = comment
 
     @property
+    def label(self):
+        return '{0}'.format(self._label)
+
+    @property
     def comment(self):
         return '"{0}"'.format(self._comment)
 

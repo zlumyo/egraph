@@ -302,6 +302,9 @@ class Text(Part):
     def text(self, value: str) -> None:
         self._txt = value
 
+    def __str__(self):
+        return self.text
+
     def to_graph(self, current=None, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
         node = DotNode(self._id, self.text, tooltip=self.text, comment=Text.__name__)
@@ -1075,6 +1078,9 @@ class Charflag(Part):
         CharflagType.Yi_neg: "not Yi character"
     }
 
+    def __str__(self):
+        return self._charflag_strings[self.type]
+
     def to_graph(self, current=None, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
         text = self._charflag_strings[self.type]
@@ -1387,7 +1393,7 @@ class Range:
     def __str__(self):
         return "from {0} to {1}".format(self.start, self.end)
 
-    def __cmp__(self, other: Range):
+    def __cmp__(self, other):
         return self.start == other.start and self.end == other.end
 
     @staticmethod
@@ -1415,7 +1421,7 @@ class CharacterClass(Part):
         self._is_inverted = value
 
     def add_part(self, value):
-        allowed_types = [Text, Charflag]
+        allowed_types = [Text, Charflag, Range]
         if allowed_types.count(type(value)) == 0:
             raise ValueError('Недопустимый тип части символьного класса.')
         if isinstance(value, Text):
@@ -1424,4 +1430,20 @@ class CharacterClass(Part):
             self._parts.append(value)
 
     def to_graph(self, current=None, id_counter=1):
-        pass
+        id_counter = self._set_id_if_not_exist(id_counter)
+        node = DotNode(self._id, self.generate_html(), tooltip='character class', comment=CharacterClass.__name__,
+                       shape='record')
+        result = [node]
+        id_counter = self._link_with_previous_if_exist(current, id_counter, node, result)
+        current = node
+        return result, current, id_counter
+
+    def generate_html(self):
+        header = 'Any character from' if self.is_inverted else 'Any character except'
+        filtered = list(filter(lambda i: str(i) != '', self._parts))
+        result = '<<TABLE BORDER="0" CELLBORDER="1" CELLSPACING="0" CELLPADDING="4"><TR><TD COLSPAN="{0}">' \
+                 '<font face="Arial">{1}</font></TD></TR><TR>'.format(len(filtered), header)
+
+        result += ''.join(['<TD>' + str(elem) + '</TD>' for elem in filtered])
+
+        return result + '</TR></TABLE>>'
