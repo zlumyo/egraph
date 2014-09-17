@@ -126,7 +126,7 @@ class DotNode(IDotable):
 
     @property
     def label(self):
-        return '{0}'.format(self._label)
+        return ('{0}' if self.shape == 'record' else '"{0}"').format(self._label)
 
     @property
     def comment(self):
@@ -243,7 +243,7 @@ class DotSubgraph(IGroupable):
             [self._get_edge_attrs()]
         )
 
-        return '\t' * (level - 2) + result + '\n'
+        return result + '\n'
 
     def _get_edge_attrs(self):
         if len(self.edge_attrs) != 0:

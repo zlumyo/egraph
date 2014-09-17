@@ -1447,3 +1447,127 @@ class CharacterClass(Part):
         result += ''.join(['<TD>' + str(elem) + '</TD>' for elem in filtered])
 
         return result + '</TR></TABLE>>'
+
+
+class ConditionalSubexpression(Part):
+    """
+    Представляет условное подвыражеине в регулярном выражении.
+    """
+
+    def __init__(self, condition, id=None):
+        Part.__init__(self, id)
+        if ConditionalSubexpression._allowed_types.count(type(condition)) == 0:
+            raise ValueError('Недопустимый тип условия.')
+        self._condition = condition
+        """:type : SubexpressionCall|AssertComplex"""
+        self._branch_true = []
+        self._branch_false = []
+
+    _allowed_types = [SubexpressionCall, AssertComplex]
+
+    @property
+    def condition(self):
+        return self._condition
+
+    @condition.setter
+    def condition(self, value):
+        if ConditionalSubexpression._allowed_types.count(type(value)) == 0:
+            raise ValueError('Недопустимый тип условия.')
+        self._condition = value
+
+    @property
+    def branch_true(self):
+        return self._branch_true
+
+    @branch_true.setter
+    def branch_true(self, value):
+        self._branch_true = value if isinstance(value, list) else []
+
+    @property
+    def branch_false(self):
+        return self._branch_false
+
+    @branch_false.setter
+    def branch_false(self, value):
+        self._branch_false = value if isinstance(value, list) else []
+
+    def _build_condition(self, current, id_counter):
+        condition = DotSubgraph(color='purple', tooltip='condition')
+        result, current, id_counter = self.condition.to_graph(current, id_counter)
+        condition.items += result
+        return condition, current, id_counter
+
+    def _buld_branch(self, branch, id_counter):
+        block = DotSubgraph(id_counter, style='dashed', color='purple')
+        id_counter += 1
+
+        current = None
+        for item in branch:
+            parts, new_current, new_id = item.to_graph(current=current, id_counter=id_counter)
+            block.items += parts
+            id_counter = new_id
+            current = new_current
+
+        # noinspection PyTypeChecker
+        link = DotLink(None, block.items[0], id_counter)
+        id_counter += 1
+
+        return [block, link], current, id_counter
+
+    def to_graph(self, current=None, id_counter=1):
+        save_current = current
+        id_counter = self._set_id_if_not_exist(id_counter)
+        subgraph = DotSubgraph(id=self._id, tooltip='conditional subexpression')
+        result = [subgraph]
+        """:type : list[IDotable|DotLink]"""
+        id_counter = self._link_with_previous_if_exist(current, id_counter, None, result)
+
+        # формируем условие
+        condition, current, id_counter = self._build_condition(None, id_counter)
+        subgraph.items.append(condition)
+
+        # если есть соединение с предыдущим узлом, то доделать его
+        if len(result) > 1:
+            result[1].destination = current
+
+        # формируем начальную и конечную точки
+        start_point = DotNode(id_counter, shape="point", fillcolor="white")
+        id_counter += 1
+        link = DotLink(current, start_point, id_counter)
+        id_counter += 1
+        end_point = DotNode(id_counter, shape="point", fillcolor="white")
+        id_counter += 1
+        subgraph.items += [start_point, link]
+
+        # формируем истинную ветку
+        current = start_point
+        if len(self._branch_true) != 0:
+            parts, current, id_counter = self._buld_branch(self._branch_true, id_counter)
+            parts[1].label = 'true'
+            parts[1].source = start_point
+            subgraph.items += parts
+            label = ''
+        else:
+            label = 'true'
+
+        # соединяем с выходной точкой условного подвыражения
+        subgraph.items.append(DotLink(current, end_point, id_counter, label))
+        id_counter += 1
+
+        # формируем ложную ветку
+        current = start_point
+        if len(self._branch_false) != 0:
+            parts, current, id_counter = self._buld_branch(self._branch_false, id_counter)
+            parts[1].label = 'false'
+            parts[1].source = start_point
+            subgraph.items += parts
+            label = ''
+        else:
+            label = 'false'
+
+        # соединяем с выходной точкой условного подвыражения
+        subgraph.items.append(DotLink(current, end_point, id_counter, label))
+        id_counter += 1
+        subgraph.items.append(end_point)
+
+        return (result, end_point, id_counter) if save_current is not None else subgraph
