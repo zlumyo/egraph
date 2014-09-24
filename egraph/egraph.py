@@ -11,6 +11,18 @@ class Part(metaclass=abc.ABCMeta):
 
     def __init__(self, id=None):
         self._id = id
+        self._enter = self
+        """:type : Part|None"""
+        self._exit = self
+        """:type : Part|None"""
+
+    @property
+    def enter(self):
+        return self._enter
+
+    @property
+    def exit(self):
+        return self._exit
 
     @property
     def id(self):
@@ -21,11 +33,10 @@ class Part(metaclass=abc.ABCMeta):
         self._id = value
 
     @abc.abstractmethod
-    def to_graph(self, current=None, id_counter=1):
+    def to_graph(self, id_counter=1):
         """
         Возвращает часть регулярного выражения в Dot-представлении.
 
-        :param DotNode|None current: Предыдущий узел.
         :param id_counter: Счётчик id.
         """
         pass
@@ -42,22 +53,22 @@ class Part(metaclass=abc.ABCMeta):
             id_counter += 1
         return id_counter
 
-    @staticmethod
-    def _link_with_previous_if_exist(current, id_counter, node, result):
-        """
-        Связывает 2 DotNode с помощью DotLink, если первый не None,
-        и добавляет созданную связь в список.
-
-        :param DotNode|None current: Первый узел.
-        :param int id_counter: Счётчик id.
-        :param DotNode|None node: Второй узел.
-        :param list[IDotable] result: Список частей dot-графа.
-        :rtype : int
-        """
-        if current is not None:
-            result.append(DotLink(current, node, id_counter))
-            id_counter += 1
-        return id_counter
+    # @staticmethod
+    # def _link_with_previous_if_exist(current, id_counter, node, result):
+    #     """
+    #     Связывает 2 DotNode с помощью DotLink, если первый не None,
+    #     и добавляет созданную связь в список.
+    #
+    #     :param DotNode|None current: Первый узел.
+    #     :param int id_counter: Счётчик id.
+    #     :param DotNode|None node: Второй узел.
+    #     :param list[IDotable] result: Список частей dot-графа.
+    #     :rtype : int
+    #     """
+    #     if current is not None:
+    #         result.append(DotLink(current, node, id_counter))
+    #         id_counter += 1
+    #     return id_counter
 
 
 class PartContainer(Part, metaclass=abc.ABCMeta):
@@ -85,7 +96,7 @@ class PartContainer(Part, metaclass=abc.ABCMeta):
             yield branch
 
     @abc.abstractmethod
-    def to_graph(self, current=None, id_counter=1):
+    def to_graph(self, id_counter=1):
         pass
 
 
@@ -94,16 +105,19 @@ class ExplainingGraph(PartContainer):
     Модель объясняющего графа.
     """
 
-    def __init__(self):
+    def __init__(self, is_exact=False):
         PartContainer.__init__(self, "explaining_graph")
         self._id_counter = 1
+        self.is_exact = is_exact
 
-    def to_graph(self, current=None, id_counter=1):
+    def to_graph(self, id_counter=1):
         """
         :rtype : DotDigraph
         """
-        graph = DotDigraph(self._id)
+        graph = DotDigraph(self._id)        # собственно результирующий граф
+        save_id_counter = self._id_counter  # сохраним значение счётчика id
 
+        # добавим в него начало и конец
         begin = DotNode(self._id_counter, "begin", 'filled', "purple", "begin", "rect", "purple")
         self._id_counter += 1
         graph.items.append(begin)
@@ -111,33 +125,54 @@ class ExplainingGraph(PartContainer):
         self._id_counter += 1
         graph.items.append(end)
 
-        if len(self._branches) == 0:
+        if len(self._branches) == 0:        # если ветвей нет, то добавим пустую
             self._branches.append([])
+
+        # если уставновлен флаг точного совпадения, то проводим соотвествующие преобразования
+        if self.is_exact:
+            sol = Assert(AssertType.circumflex, self._id_counter)
+            self._id_counter += 1
+            eol = Assert(AssertType.dollar, self._id_counter)
+            self._id_counter += 1
+
+            graph.bgcolor = 'grey'
+
+            container = Subexpression(is_wrapper=True)
+            for branch in self._branches:
+                container.add_branch(branch)
+
+            self._branches = [[sol, container, eol]]
 
         current = begin
         if len(self._branches) == 1:
             branch = self._branches[0]
             for item in branch:
-                parts, new_current, new_id = item.to_graph(current=current, id_counter=self._id_counter)
-                graph.items += parts
+                part, new_id, enter, exit = item.to_graph(self._id_counter)
                 self._id_counter = new_id
-                current = new_current
+                graph.items.append(part)
+                # не забываем соединить две части
+                graph.items.append(DotLink(current, enter, self._id_counter))
+                self._id_counter += 1
+                current = exit  # теперь конец нового элемента является зацепкой для следующего
         else:
             start = DotNode(self._id_counter, tooltip="alternative", shape="point", fillcolor="white")
             self._id_counter += 1
             finish = DotNode(self._id_counter, tooltip="alternative", shape="point", fillcolor="white")
             self._id_counter += 1
 
-            graph.items += [start, finish]
-            self._id_counter = self._link_with_previous_if_exist(current, self._id_counter, start, graph.items)
+            graph.items += [start, finish, DotLink(begin, start, self._id_counter)]
+            self._id_counter += 1
 
             for branch in self._branches:
                 current = start
                 for item in branch:
-                    parts, new_current, new_id = item.to_graph(current=current, id_counter=self._id_counter)
-                    graph.items += parts
+                    part, new_id, enter, exit = item.to_graph(id_counter=self._id_counter)
                     self._id_counter = new_id
-                    current = new_current
+                    graph.items.append(part)
+                    # не забываем соединить две части
+                    graph.items.append(DotLink(current, enter, self._id_counter))
+                    self._id_counter += 1
+                    current = exit  # теперь конец нового элемента является зацепкой для следующего
 
                 graph.items.append(DotLink(current, finish, self._id_counter))
                 self._id_counter += 1
@@ -148,6 +183,8 @@ class ExplainingGraph(PartContainer):
         self._id_counter += 1
 
         ExplainingGraph._optimize(graph, graph)
+
+        self._id_counter = save_id_counter  # вернём значение счётчика id
 
         return graph
 
@@ -172,29 +209,29 @@ class ExplainingGraph(PartContainer):
                 # If neighbor is simple node with text too and it's a child of the same subgraph,
                 # then we need to join this two nodes.
                 if neighbor is not None and neighbor._comment == Text.__name__ and owner == graph:
-                    if type(item) is str and type(neighbor) is str:
-                        ids_this = item.id.split('_')
-                        ids_neighbor = neighbor.id.split('_')
+                    if type(item._id) is str and type(neighbor._id) is str:
+                        ids_this = item._id.split('_')
+                        ids_neighbor = neighbor._id.split('_')
                         ids_new = ids_this[0] + '_' + ids_this[1] + '_' + ids_neighbor[2]
                     else:
-                        ids_new = item.id
+                        ids_new = item._id
 
                     item._label += neighbor._label
                     item._tooltip += neighbor._label
                     item.id = ids_new
 
-                    # Destroy old node.
-                    owner.items.remove(neighbor)
-
                     # Find a link between current node and neighbor, then change destination to node after neighbor.
                     link, _ = main.find_link(item, neighbor)
-                    after, _ = main.find_neighbor_right(neighbor)
+                    after = main.find_neighbor_right(neighbor)
                     link.destination = after
 
                     # Destroy old link.
                     link, owner = main.find_link(neighbor, after)
                     if owner is not None:
                         owner.items.remove(link)
+
+                    # Destroy old node.
+                    owner.items.remove(neighbor)
 
                     break
             else:
@@ -305,13 +342,10 @@ class Text(Part):
     def __str__(self):
         return self.text
 
-    def to_graph(self, current=None, id_counter=1):
+    def to_graph(self, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
         node = DotNode(self._id, self.text, tooltip=self.text, comment=Text.__name__)
-        result = [node]
-        id_counter = self._link_with_previous_if_exist(current, id_counter, node, result)
-        current = node
-        return result, current, id_counter
+        return node, id_counter, node, node
 
 
 class AssertType(Enum):
@@ -345,14 +379,11 @@ class Assert(Part):
         AssertType.dollar: "end of the string"
     }
 
-    def to_graph(self, current=None, id_counter=1):
+    def to_graph(self, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
         text = self._assert_strings[self.type]
         node = DotNode(self._id, text, comment=Assert.__name__)
-        result = [node]
-        id_counter = self._link_with_previous_if_exist(current, id_counter, node, result)
-        current = node
-        return result, current, id_counter
+        return node, id_counter, node, node
 
 
 class Subexpression(PartContainer):
@@ -360,9 +391,10 @@ class Subexpression(PartContainer):
     Представляет подвыражение в регулярном выражении.
     """
 
-    def __init__(self, number=None, id=None):
+    def __init__(self, number=None, id=None, is_wrapper=False):
         PartContainer.__init__(self, id=id)
         self._number = number
+        self._is_wrapper = is_wrapper
 
     @property
     def number(self) -> int:
@@ -372,67 +404,94 @@ class Subexpression(PartContainer):
     def number(self, value: int):
         self._number = value
 
-    def to_graph(self, current=None, id_counter=1):
-        save_current = current
-        id_counter = self._set_id_if_not_exist(id_counter)
-        if self.number is not None:
+    @property
+    def is_wrapper(self) -> bool:
+        return self._is_wrapper
+
+    @is_wrapper.setter
+    def is_wrapper(self, value: bool):
+        self._is_wrapper = value
+
+    def to_graph(self, id_counter=1):
+        id_counter = self._set_id_if_not_exist(id_counter)  # устанавливаем id, если он не задан
+
+        if self.number is not None:                         # если это не группировка, то надпись нужна
             text = "subexpression #{0}".format(self.number)
             tooltip = "subexpression"
-        else:
+        else:                                               # иначе надпись не нужна
             text = ""
             tooltip = "grouping"
-        subgraph = DotSubgraph(id=self._id, label=text, tooltip=tooltip)
-        result = [subgraph]
-        """:type : list[IDotable|DotLink]"""
-        id_counter = self._link_with_previous_if_exist(current, id_counter, None, result)
 
-        if len(self._branches) == 0:
+        # подграф представляющий подвыражение (группировку)
+        subgraph = DotSubgraph(
+            id=self._id,
+            label=text,
+            tooltip=tooltip,
+            bgcolor='white',
+            color=('white' if self.is_wrapper else 'black')
+        )
+
+        if len(self._branches) == 0:                        # если ветвей нет, то добавим пустую
             self._branches.append([])
 
-        if len(self._branches) == 1:
+        global_enter = global_exit = None
+        if len(self._branches) == 1:                        # если всего 1 ветвь, то это неальтернатива
             branch = self._branches[0]
 
+            # если совсем пустое подвыражение, то внутри надобно сделать точку
             if len(branch) == 0:
                 point = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
                                 comment="Point")
                 id_counter += 1
 
                 subgraph.items.append(point)
-                current = point
+                global_enter = global_exit = point
+            # иначе проходимся по содержимому ветки и генерирем части графа соотвествующие ему (содержимому)
             else:
-                current = None
+                current = None  # первый элемент ни с чем соединять не будем
                 for item in branch:
-                    parts, new_current, new_id = item.to_graph(current=current, id_counter=id_counter)
-                    subgraph.items += parts
+                    part, new_id, enter, exit = item.to_graph(id_counter=id_counter)
+                    if global_enter is None:
+                        global_enter = enter
                     id_counter = new_id
-                    current = new_current
-        else:
+                    subgraph.items.append(part)
+                    # не забываем соединить две части
+                    if current is not None:
+                        subgraph.items.append(DotLink(current, enter, id_counter))
+                    id_counter += 1
+                    current = exit  # теперь конец нового элемента является зацепкой для следующего
+                global_exit = current  # конец последнего элемента является глобальным концом подграфа
+        else:                                                # иначе это альтернатива
+            # вход альтернативы
             start = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
                             comment="Point")
             id_counter += 1
+            # выход альтернативы
             finish = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
                              comment="Point")
             id_counter += 1
 
-            subgraph.items += [start, finish]
+            subgraph.items += [start, finish]   # добавляем точки к частям подграфа
+            global_enter = start                # первая точка это глобальный вход подграфа
+            global_exit = finish                # вторая точка это глобальный выход подграфа
 
+            # проходимся по веткам и создаём из них части подграфа
             for branch in self._branches:
-                current = start
+                current = start  # грядущий первый элемент соединим с начальной точкой
                 for item in branch:
-                    parts, new_current, new_id = item.to_graph(current=current, id_counter=id_counter)
-                    subgraph.items += parts
+                    part, new_id, enter, exit = item.to_graph(id_counter=id_counter)
                     id_counter = new_id
-                    current = new_current
+                    subgraph.items.append(part)
+                    # не забываем соединить две части
+                    subgraph.items.append(DotLink(current, enter, id_counter))
+                    id_counter += 1
+                    current = exit  # теперь конец нового элемента является зацепкой для следующего
 
+                # не забываем соединить конец ветки с выходом альтернативы
                 subgraph.items.append(DotLink(current, finish, id_counter))
                 id_counter += 1
 
-            current = finish
-
-        if len(result) > 1:
-            result[1].destination = subgraph.items[0]
-
-        return (result, current, id_counter) if save_current is not None else subgraph
+        return (subgraph, id_counter, global_enter, global_exit)
 
 
 class CharflagType(Enum):
@@ -1081,14 +1140,11 @@ class Charflag(Part):
     def __str__(self):
         return self._charflag_strings[self.type]
 
-    def to_graph(self, current=None, id_counter=1):
+    def to_graph(self, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
         text = self._charflag_strings[self.type]
         node = DotNode(self._id, text, comment=Charflag.__name__, color='hotpink')
-        result = [node]
-        id_counter = self._link_with_previous_if_exist(current, id_counter, node, result)
-        current = node
-        return result, current, id_counter
+        return node, id_counter, node, node
 
 
 class Backreference(Part):
@@ -1108,7 +1164,7 @@ class Backreference(Part):
     def number(self, value: int):
         self._number = value
 
-    def to_graph(self, current=None, id_counter=1):
+    def to_graph(self, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
         node = DotNode(
             self._id,
@@ -1117,10 +1173,7 @@ class Backreference(Part):
             comment=Backreference.__name__,
             color="blue"
         )
-        result = [node]
-        id_counter = self._link_with_previous_if_exist(current, id_counter, node, result)
-        current = node
-        return result, current, id_counter
+        return node, id_counter, node, node
 
 
 class SubexpressionCall(Part):
@@ -1149,7 +1202,7 @@ class SubexpressionCall(Part):
     def subexpr_ref(self, value):
         self._subexpr_ref = value
 
-    def to_graph(self, current=None, id_counter=1):
+    def to_graph(self, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
 
         if self.subexpr_ref is not None:
@@ -1168,10 +1221,7 @@ class SubexpressionCall(Part):
             comment=SubexpressionCall.__name__,
             color="blue"
         )
-        result = [node]
-        id_counter = self._link_with_previous_if_exist(current, id_counter, node, result)
-        current = node
-        return result, current, id_counter
+        return node, id_counter, node, node
 
 
 class Quantifier(PartContainer):
@@ -1216,63 +1266,73 @@ class Quantifier(PartContainer):
     def is_greedy(self, value: bool):
         self._is_greedy = value
 
-    def to_graph(self, current=None, id_counter=1):
-        save_current = current
+    def to_graph(self, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
         text = "from {0} to {1}".format(self.min, 'infinity' if self.max is None else self.max)
         tooltip = "quantifier"
         subgraph = DotSubgraph(id=self._id, label=text, tooltip=tooltip, style='dotted')
-        result = [subgraph]
-        """:type : list[IDotable|DotLink]"""
-        id_counter = self._link_with_previous_if_exist(current, id_counter, None, result)
 
         if len(self._branches) == 0:
             self._branches.append([])
 
-        if len(self._branches) == 1:
+        global_enter = global_exit = None
+        if len(self._branches) == 1:                        # если всего 1 ветвь, то это неальтернатива
             branch = self._branches[0]
 
+            # если совсем пустое подвыражение, то внутри надобно сделать точку
             if len(branch) == 0:
                 point = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
                                 comment="Point")
                 id_counter += 1
 
                 subgraph.items.append(point)
-                current = point
+                global_enter = global_exit = point
+            # иначе проходимся по содержимому ветки и генерирем части графа соотвествующие ему (содержимому)
             else:
-                current = None
+                current = None  # первый элемент ни с чем соединять не будем
                 for item in branch:
-                    parts, new_current, new_id = item.to_graph(current=current, id_counter=id_counter)
-                    subgraph.items += parts
+                    part, new_id, enter, exit = item.to_graph(id_counter=id_counter)
+                    if global_enter is None:
+                        global_enter = enter
                     id_counter = new_id
-                    current = new_current
-        else:
+                    subgraph.items.append(part)
+                    # не забываем соединить две части
+                    if current is not None:
+                        subgraph.items.append(DotLink(current, enter, id_counter))
+                    id_counter += 1
+                    current = exit  # теперь конец нового элемента является зацепкой для следующего
+                global_exit = current  # конец последнего элемента является глобальным концом подграфа
+        else:                                                # иначе это альтернатива
+            # вход альтернативы
             start = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
                             comment="Point")
             id_counter += 1
+            # выход альтернативы
             finish = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
                              comment="Point")
             id_counter += 1
 
-            subgraph.items += [start, finish]
+            subgraph.items += [start, finish]   # добавляем точки к частям подграфа
+            global_enter = start                # первая точка это глобальный вход подграфа
+            global_exit = finish                # вторая точка это глобальный выход подграфа
 
+            # проходимся по веткам и создаём из них части подграфа
             for branch in self._branches:
-                current = start
+                current = start  # грядущий первый элемент соединим с начальной точкой
                 for item in branch:
-                    parts, new_current, new_id = item.to_graph(current=current, id_counter=id_counter)
-                    subgraph.items += parts
+                    part, new_id, enter, exit = item.to_graph(id_counter=id_counter)
                     id_counter = new_id
-                    current = new_current
+                    subgraph.items.append(part)
+                    # не забываем соединить две части
+                    subgraph.items.append(DotLink(current, enter, id_counter))
+                    id_counter += 1
+                    current = exit  # теперь конец нового элемента является зацепкой для следующего
 
+                # не забываем соединить конец ветки с выходом альтернативы
                 subgraph.items.append(DotLink(current, finish, id_counter))
                 id_counter += 1
 
-            current = finish
-
-        if len(result) > 1:
-            result[1].destination = subgraph.items[0]
-
-        return (result, current, id_counter) if save_current is not None else subgraph
+        return (subgraph, id_counter, global_enter, global_exit)
 
 
 class AssertComplexType(Enum):
@@ -1299,8 +1359,7 @@ class AssertComplex(PartContainer):
     def type(self, value: AssertComplexType):
         self._type = value
 
-    def to_graph(self, current=None, id_counter=1):
-        save_current = current
+    def to_graph(self, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
         tooltip = "assert"
         subgraph = DotSubgraph(id=self._id, tooltip=tooltip, color='grey')
@@ -1313,53 +1372,72 @@ class AssertComplex(PartContainer):
         link = DotLink(enter, None, id_counter, color=color)
         id_counter += 1
 
-        result = [enter, link, subgraph]
-        """:type : list[IDotable|DotLink]"""
-        id_counter = self._link_with_previous_if_exist(current, id_counter, enter, result)
+        # result = [enter, link, subgraph]
+        # """:type : list[IDotable|DotLink]"""
 
         if len(self._branches) == 0:
             self._branches.append([])
 
-        if len(self._branches) == 1:
+        global_enter = global_exit = enter
+        if len(self._branches) == 1:                        # если всего 1 ветвь, то это неальтернатива
             branch = self._branches[0]
 
+            # если совсем пустое подвыражение, то внутри надобно сделать точку
             if len(branch) == 0:
                 point = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
                                 comment="Point")
                 id_counter += 1
 
                 subgraph.items.append(point)
+                global_enter = global_exit = point
+            # иначе проходимся по содержимому ветки и генерирем части графа соотвествующие ему (содержимому)
             else:
-                current = None
+                current = None  # первый элемент ни с чем соединять не будем
                 for item in branch:
-                    parts, new_current, new_id = item.to_graph(current=current, id_counter=id_counter)
-                    subgraph.items += parts
+                    part, new_id, enter, exit = item.to_graph(id_counter=id_counter)
+                    if current is None:
+                        link.destination = enter
                     id_counter = new_id
-                    current = new_current
-        else:
+                    subgraph.items.append(part)
+                    # не забываем соединить две части
+                    if current is not None:
+                        subgraph.items.append(DotLink(current, enter, id_counter))
+                    id_counter += 1
+                    current = exit  # теперь конец нового элемента является зацепкой для следующего
+        else:                                                # иначе это альтернатива
+            # вход альтернативы
             start = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
                             comment="Point")
             id_counter += 1
+            # выход альтернативы
             finish = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
                              comment="Point")
             id_counter += 1
 
-            subgraph.items += [start, finish]
+            subgraph.items += [start, finish]   # добавляем точки к частям подграфа
 
+            # проходимся по веткам и создаём из них части подграфа
             for branch in self._branches:
-                current = start
+                current = start  # грядущий первый элемент соединим с начальной точкой
                 for item in branch:
-                    parts, new_current, new_id = item.to_graph(current=current, id_counter=id_counter)
-                    subgraph.items += parts
+                    part, new_id, enter, exit = item.to_graph(id_counter=id_counter)
                     id_counter = new_id
-                    current = new_current
+                    subgraph.items.append(part)
+                    # не забываем соединить две части
+                    subgraph.items.append(DotLink(current, enter, id_counter))
+                    id_counter += 1
+                    current = exit  # теперь конец нового элемента является зацепкой для следующего
 
+                # не забываем соединить конец ветки с выходом альтернативы
                 subgraph.items.append(DotLink(current, finish, id_counter))
                 id_counter += 1
 
-        link.destination = subgraph.items[0]
+            link.destination = start
 
-        return (result, enter, id_counter) if save_current is not None else subgraph
+        wrapper = DotSubgraph(id_counter, color='white')
+        wrapper.items += [global_enter, link, subgraph]
+
+        return wrapper, id_counter, global_enter, global_exit
 
 
 class Range:
@@ -1429,14 +1507,11 @@ class CharacterClass(Part):
         elif self._parts.count(value) == 0:
             self._parts.append(value)
 
-    def to_graph(self, current=None, id_counter=1):
+    def to_graph(self, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
         node = DotNode(self._id, self.generate_html(), tooltip='character class', comment=CharacterClass.__name__,
                        shape='record')
-        result = [node]
-        id_counter = self._link_with_previous_if_exist(current, id_counter, node, result)
-        current = node
-        return result, current, id_counter
+        return node, id_counter, node, node
 
     def generate_html(self):
         header = 'Any character from' if self.is_inverted else 'Any character except'
@@ -1491,61 +1566,52 @@ class ConditionalSubexpression(Part):
     def branch_false(self, value):
         self._branch_false = value if isinstance(value, list) else []
 
-    def _build_condition(self, current, id_counter):
+    def _build_condition(self, id_counter):
         condition = DotSubgraph(color='purple', tooltip='condition')
-        result, current, id_counter = self.condition.to_graph(current, id_counter)
-        condition.items += result
-        return condition, current, id_counter
+        part, id_counter, enter, exit = self.condition.to_graph(id_counter)
+        condition.items.append(part)
+        return condition, id_counter, enter, exit
 
     def _buld_branch(self, branch, id_counter):
         block = DotSubgraph(id_counter, style='dashed', color='purple')
         id_counter += 1
 
-        current = None
+        global_enter = current = None
         for item in branch:
-            parts, new_current, new_id = item.to_graph(current=current, id_counter=id_counter)
-            block.items += parts
-            id_counter = new_id
-            current = new_current
+            part, id_counter, enter, exit = item.to_graph(id_counter)
+            if global_enter is None:
+                global_enter = enter
+            block.items.append(part)
+            if current is not None:
+                block.items.append(DotLink(current, enter, id_counter))
+            current = exit
 
-        # noinspection PyTypeChecker
-        link = DotLink(None, block.items[0], id_counter)
-        id_counter += 1
+        return block, id_counter, global_enter, current
 
-        return [block, link], current, id_counter
-
-    def to_graph(self, current=None, id_counter=1):
-        save_current = current
+    def to_graph(self, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
         subgraph = DotSubgraph(id=self._id, tooltip='conditional subexpression')
-        result = [subgraph]
-        """:type : list[IDotable|DotLink]"""
-        id_counter = self._link_with_previous_if_exist(current, id_counter, None, result)
 
         # формируем условие
-        condition, current, id_counter = self._build_condition(None, id_counter)
+        condition, id_counter, global_enter, current = self._build_condition(id_counter)
         subgraph.items.append(condition)
-
-        # если есть соединение с предыдущим узлом, то доделать его
-        if len(result) > 1:
-            result[1].destination = current
 
         # формируем начальную и конечную точки
         start_point = DotNode(id_counter, shape="point", fillcolor="white")
         id_counter += 1
         link = DotLink(current, start_point, id_counter)
         id_counter += 1
-        end_point = DotNode(id_counter, shape="point", fillcolor="white")
+        global_end = end_point = DotNode(id_counter, shape="point", fillcolor="white")
         id_counter += 1
         subgraph.items += [start_point, link]
 
         # формируем истинную ветку
         current = start_point
         if len(self._branch_true) != 0:
-            parts, current, id_counter = self._buld_branch(self._branch_true, id_counter)
-            parts[1].label = 'true'
-            parts[1].source = start_point
-            subgraph.items += parts
+            part, new_id, enter, exit = self._buld_branch(self._branch_true, id_counter)
+            subgraph.items += [part, DotLink(current, enter, id_counter, 'true')]
+            id_counter += 1
+            current = exit
             label = ''
         else:
             label = 'true'
@@ -1557,10 +1623,10 @@ class ConditionalSubexpression(Part):
         # формируем ложную ветку
         current = start_point
         if len(self._branch_false) != 0:
-            parts, current, id_counter = self._buld_branch(self._branch_false, id_counter)
-            parts[1].label = 'false'
-            parts[1].source = start_point
-            subgraph.items += parts
+            part, new_id, enter, exit = self._buld_branch(self._branch_false, id_counter)
+            subgraph.items += [part, DotLink(current, enter, id_counter, 'false')]
+            id_counter += 1
+            current = exit
             label = ''
         else:
             label = 'false'
@@ -1570,4 +1636,4 @@ class ConditionalSubexpression(Part):
         id_counter += 1
         subgraph.items.append(end_point)
 
-        return (result, end_point, id_counter) if save_current is not None else subgraph
+        return subgraph, id_counter, global_enter, global_end
