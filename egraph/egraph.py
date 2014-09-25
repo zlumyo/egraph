@@ -2,6 +2,7 @@ __author__ = 'Владимир'
 
 from egraph.dot import *
 from enum import Enum
+from copy import deepcopy
 
 
 class Part(metaclass=abc.ABCMeta):
@@ -53,22 +54,31 @@ class Part(metaclass=abc.ABCMeta):
             id_counter += 1
         return id_counter
 
-    # @staticmethod
-    # def _link_with_previous_if_exist(current, id_counter, node, result):
-    #     """
-    #     Связывает 2 DotNode с помощью DotLink, если первый не None,
-    #     и добавляет созданную связь в список.
-    #
-    #     :param DotNode|None current: Первый узел.
-    #     :param int id_counter: Счётчик id.
-    #     :param DotNode|None node: Второй узел.
-    #     :param list[IDotable] result: Список частей dot-графа.
-    #     :rtype : int
-    #     """
-    #     if current is not None:
-    #         result.append(DotLink(current, node, id_counter))
-    #         id_counter += 1
-    #     return id_counter
+
+class OptionCaseSensitivity(Part):
+    """
+    Представляет опцию чувствительности к регистру.
+    """
+
+    def __init__(self, is_positive=True, id=None):
+        Part.__init__(self, id=id)
+        self._is_positive = is_positive
+
+    @property
+    def is_positive(self) -> bool:
+        return self._is_positive
+
+    @is_positive.setter
+    def is_positive(self, value: bool):
+        self._is_positive = value
+
+    def __eq__(self, other):
+        return self.is_positive == other.is_positive
+
+    def to_graph(self, id_counter=1):
+        id_counter = self._set_id_if_not_exist(id_counter)
+        node = DotNode(self._id, 'i-option', comment=OptionCaseSensitivity.__name__)
+        return node, id_counter, node, node
 
 
 class PartContainer(Part, metaclass=abc.ABCMeta):
@@ -99,14 +109,44 @@ class PartContainer(Part, metaclass=abc.ABCMeta):
     def to_graph(self, id_counter=1):
         pass
 
+    def _perform_case_option(self, initial=OptionCaseSensitivity(False)):
+        for branch in self._branches:
+            option = initial
+            for item in branch:
+                if isinstance(item, OptionCaseSensitivity):
+                    option = item
+                elif isinstance(item, ICaseSensitive):
+                    item.is_sensitive = not option.is_positive
+                elif isinstance(item, PartContainer) or isinstance(item, ConditionalSubexpression):
+                    item._perform_case_option(option)
 
-class ExplainingGraph(PartContainer):
+
+class ICaseSensitive(metaclass=abc.ABCMeta):
+    """
+    Интерфейс чувствительного к регсистру объекта.
+    """
+
+    def __init__(self):
+        self._is_sensitive = True
+
+    @property
+    def is_sensitive(self) -> bool:
+        return self._is_sensitive
+
+    @is_sensitive.setter
+    def is_sensitive(self, value: bool):
+        self._is_sensitive = value
+
+
+class ExplainingGraph(PartContainer, ICaseSensitive):
     """
     Модель объясняющего графа.
     """
 
-    def __init__(self, is_exact=False):
+    def __init__(self, is_exact=False, is_case_sensitive=True):
         PartContainer.__init__(self, "explaining_graph")
+        ICaseSensitive.__init__(self)
+        self.is_sensitive = is_case_sensitive
         self._id_counter = 1
         self.is_exact = is_exact
 
@@ -114,8 +154,16 @@ class ExplainingGraph(PartContainer):
         """
         :rtype : DotDigraph
         """
+        rabbit = deepcopy(self)             # сохраним копию, чтобы потом восстановить
+        """:type : ExplainingGraph"""
+        # реализуем опцию чувствительности к регистру
+        rabbit._perform_case_option(OptionCaseSensitivity(not self.is_sensitive))
+        graph = rabbit._to_real_graph()
+        ExplainingGraph._del_case_options(graph, graph)
+        return graph
+
+    def _to_real_graph(self):
         graph = DotDigraph(self._id)        # собственно результирующий граф
-        save_id_counter = self._id_counter  # сохраним значение счётчика id
 
         # добавим в него начало и конец
         begin = DotNode(self._id_counter, "begin", 'filled', "purple", "begin", "rect", "purple")
@@ -125,7 +173,7 @@ class ExplainingGraph(PartContainer):
         self._id_counter += 1
         graph.items.append(end)
 
-        if len(self._branches) == 0:        # если ветвей нет, то добавим пустую
+        if len(self._branches) == 0:  # если ветвей нет, то добавим пустую
             self._branches.append([])
 
         # если уставновлен флаг точного совпадения, то проводим соотвествующие преобразования
@@ -146,6 +194,7 @@ class ExplainingGraph(PartContainer):
         current = begin
         if len(self._branches) == 1:
             branch = self._branches[0]
+            """:type : list"""
             for item in branch:
                 part, new_id, enter, exit = item.to_graph(self._id_counter)
                 self._id_counter = new_id
@@ -183,8 +232,6 @@ class ExplainingGraph(PartContainer):
         self._id_counter += 1
 
         ExplainingGraph._optimize(graph, graph)
-
-        self._id_counter = save_id_counter  # вернём значение счётчика id
 
         return graph
 
@@ -321,14 +368,38 @@ class ExplainingGraph(PartContainer):
             else:
                 break
 
+    @staticmethod
+    def _del_case_options(graph: IGroupable, main: DotDigraph):
+        while True:
+            for item in filter(lambda i: isinstance(i, DotNode) and i._comment == OptionCaseSensitivity.__name__,
+                               graph.items):
 
-class Text(Part):
+                neighbor_r = main.find_neighbor_right(item)
+                neighbor_l = main.find_neighbor_left(item)
+                link, _ = main.find_link(neighbor_l, item)
+                link.destination = neighbor_r
+
+                link, owner = main.find_link(item, neighbor_r)
+                owner.items.remove(link)
+
+                graph.items.remove(item)
+
+                break
+            else:
+                break
+
+        for subgraph in filter(lambda i: isinstance(i, IGroupable), graph.items):
+            ExplainingGraph._del_case_options(subgraph, main)
+
+
+class Text(Part, ICaseSensitive):
     """
     Простой текст в регулярном выражении.
     """
 
     def __init__(self, txt="", id=None):
         Part.__init__(self, id=id)
+        ICaseSensitive.__init__(self)
         self._txt = txt
 
     @property
@@ -344,7 +415,14 @@ class Text(Part):
 
     def to_graph(self, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
-        node = DotNode(self._id, self.text, tooltip=self.text, comment=Text.__name__)
+        node = DotNode(
+            self._id,
+            self.text,
+            tooltip=self.text,
+            comment=Text.__name__,
+            fillcolor=('' if self.is_sensitive else 'lightgrey'),
+            style=('' if self.is_sensitive else 'filled')
+        )
         return node, id_counter, node, node
 
 
@@ -415,10 +493,10 @@ class Subexpression(PartContainer):
     def to_graph(self, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)  # устанавливаем id, если он не задан
 
-        if self.number is not None:                         # если это не группировка, то надпись нужна
+        if self.number is not None:  # если это не группировка, то надпись нужна
             text = "subexpression #{0}".format(self.number)
             tooltip = "subexpression"
-        else:                                               # иначе надпись не нужна
+        else:  # иначе надпись не нужна
             text = ""
             tooltip = "grouping"
 
@@ -431,11 +509,11 @@ class Subexpression(PartContainer):
             color=('white' if self.is_wrapper else 'black')
         )
 
-        if len(self._branches) == 0:                        # если ветвей нет, то добавим пустую
+        if len(self._branches) == 0:  # если ветвей нет, то добавим пустую
             self._branches.append([])
 
         global_enter = global_exit = None
-        if len(self._branches) == 1:                        # если всего 1 ветвь, то это неальтернатива
+        if len(self._branches) == 1:  # если всего 1 ветвь, то это неальтернатива
             branch = self._branches[0]
 
             # если совсем пустое подвыражение, то внутри надобно сделать точку
@@ -461,7 +539,7 @@ class Subexpression(PartContainer):
                     id_counter += 1
                     current = exit  # теперь конец нового элемента является зацепкой для следующего
                 global_exit = current  # конец последнего элемента является глобальным концом подграфа
-        else:                                                # иначе это альтернатива
+        else:  # иначе это альтернатива
             # вход альтернативы
             start = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
                             comment="Point")
@@ -471,9 +549,9 @@ class Subexpression(PartContainer):
                              comment="Point")
             id_counter += 1
 
-            subgraph.items += [start, finish]   # добавляем точки к частям подграфа
-            global_enter = start                # первая точка это глобальный вход подграфа
-            global_exit = finish                # вторая точка это глобальный выход подграфа
+            subgraph.items += [start, finish]  # добавляем точки к частям подграфа
+            global_enter = start  # первая точка это глобальный вход подграфа
+            global_exit = finish  # вторая точка это глобальный выход подграфа
 
             # проходимся по веткам и создаём из них части подграфа
             for branch in self._branches:
@@ -809,13 +887,14 @@ class CharflagType(Enum):
     xdigit_neg = 278
 
 
-class Charflag(Part):
+class Charflag(Part, ICaseSensitive):
     """
     Представляет символьный флаг в регулярном выражении.
     """
 
     def __init__(self, type: CharflagType, id=None):
         Part.__init__(self, id=id)
+        ICaseSensitive.__init__(self)
         self._type = type
 
     @property
@@ -1143,17 +1222,24 @@ class Charflag(Part):
     def to_graph(self, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
         text = self._charflag_strings[self.type]
-        node = DotNode(self._id, text, comment=Charflag.__name__, color='hotpink')
+        node = DotNode(
+            self._id,
+            text,
+            comment=Charflag.__name__, color='hotpink',
+            fillcolor=('' if self.is_sensitive else 'lightgrey'),
+            style=('' if self.is_sensitive else 'filled')
+        )
         return node, id_counter, node, node
 
 
-class Backreference(Part):
+class Backreference(Part, ICaseSensitive):
     """
     Представляет обратную ссылку в регулярном выражении.
     """
 
     def __init__(self, number, id=None):
         Part.__init__(self, id=id)
+        ICaseSensitive.__init__(self)
         self._number = number
 
     @property
@@ -1171,18 +1257,21 @@ class Backreference(Part):
             "backreference #" + str(self.number),
             tooltip="backreference",
             comment=Backreference.__name__,
-            color="blue"
+            color="blue",
+            fillcolor=('' if self.is_sensitive else 'lightgrey'),
+            style=('' if self.is_sensitive else 'filled')
         )
         return node, id_counter, node, node
 
 
-class SubexpressionCall(Part):
+class SubexpressionCall(Part, ICaseSensitive):
     """
     Представляет вызов подмаски в регулярном выражении.
     """
 
     def __init__(self, subexpr_ref=None, is_recursive=False, id=None):
         Part.__init__(self, id=id)
+        ICaseSensitive.__init__(self)
         self._subexpr_ref = subexpr_ref
         self._is_recursive = is_recursive
 
@@ -1219,7 +1308,9 @@ class SubexpressionCall(Part):
             text,
             tooltip="subexpression call",
             comment=SubexpressionCall.__name__,
-            color="blue"
+            color="blue",
+            fillcolor=('' if self.is_sensitive else 'lightgrey'),
+            style=('' if self.is_sensitive else 'filled')
         )
         return node, id_counter, node, node
 
@@ -1276,7 +1367,7 @@ class Quantifier(PartContainer):
             self._branches.append([])
 
         global_enter = global_exit = None
-        if len(self._branches) == 1:                        # если всего 1 ветвь, то это неальтернатива
+        if len(self._branches) == 1:  # если всего 1 ветвь, то это неальтернатива
             branch = self._branches[0]
 
             # если совсем пустое подвыражение, то внутри надобно сделать точку
@@ -1302,7 +1393,7 @@ class Quantifier(PartContainer):
                     id_counter += 1
                     current = exit  # теперь конец нового элемента является зацепкой для следующего
                 global_exit = current  # конец последнего элемента является глобальным концом подграфа
-        else:                                                # иначе это альтернатива
+        else:  # иначе это альтернатива
             # вход альтернативы
             start = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
                             comment="Point")
@@ -1312,9 +1403,9 @@ class Quantifier(PartContainer):
                              comment="Point")
             id_counter += 1
 
-            subgraph.items += [start, finish]   # добавляем точки к частям подграфа
-            global_enter = start                # первая точка это глобальный вход подграфа
-            global_exit = finish                # вторая точка это глобальный выход подграфа
+            subgraph.items += [start, finish]  # добавляем точки к частям подграфа
+            global_enter = start  # первая точка это глобальный вход подграфа
+            global_exit = finish  # вторая точка это глобальный выход подграфа
 
             # проходимся по веткам и создаём из них части подграфа
             for branch in self._branches:
@@ -1379,7 +1470,7 @@ class AssertComplex(PartContainer):
             self._branches.append([])
 
         global_enter = global_exit = enter
-        if len(self._branches) == 1:                        # если всего 1 ветвь, то это неальтернатива
+        if len(self._branches) == 1:  # если всего 1 ветвь, то это неальтернатива
             branch = self._branches[0]
 
             # если совсем пустое подвыражение, то внутри надобно сделать точку
@@ -1404,7 +1495,7 @@ class AssertComplex(PartContainer):
                         subgraph.items.append(DotLink(current, enter, id_counter))
                     id_counter += 1
                     current = exit  # теперь конец нового элемента является зацепкой для следующего
-        else:                                                # иначе это альтернатива
+        else:  # иначе это альтернатива
             # вход альтернативы
             start = DotNode(id_counter, color="black", tooltip="alternative", shape="point", fillcolor="white",
                             comment="Point")
@@ -1414,7 +1505,7 @@ class AssertComplex(PartContainer):
                              comment="Point")
             id_counter += 1
 
-            subgraph.items += [start, finish]   # добавляем точки к частям подграфа
+            subgraph.items += [start, finish]  # добавляем точки к частям подграфа
 
             # проходимся по веткам и создаём из них части подграфа
             for branch in self._branches:
@@ -1480,13 +1571,14 @@ class Range:
             raise ValueError("Начало интервала больше конца.")
 
 
-class CharacterClass(Part):
+class CharacterClass(Part, ICaseSensitive):
     """
     Символьный класс в регулярном выражении.
     """
 
     def __init__(self, is_inverted=False, id=None):
         Part.__init__(self, id=id)
+        ICaseSensitive.__init__(self)
         self._is_inverted = is_inverted
         self._parts = [Text('')]
 
@@ -1509,8 +1601,15 @@ class CharacterClass(Part):
 
     def to_graph(self, id_counter=1):
         id_counter = self._set_id_if_not_exist(id_counter)
-        node = DotNode(self._id, self.generate_html(), tooltip='character class', comment=CharacterClass.__name__,
-                       shape='record')
+        node = DotNode(
+            self._id,
+            self.generate_html(),
+            tooltip='character class',
+            comment=CharacterClass.__name__,
+            shape='record',
+            fillcolor=('' if self.is_sensitive else 'lightgrey'),
+            style=('' if self.is_sensitive else 'filled')
+        )
         return node, id_counter, node, node
 
     def generate_html(self):
@@ -1637,3 +1736,18 @@ class ConditionalSubexpression(Part):
         subgraph.items.append(end_point)
 
         return subgraph, id_counter, global_enter, global_end
+
+    @staticmethod
+    def _perform_case_for_branch(branch, option=OptionCaseSensitivity(False)):
+        for item in branch:
+            if isinstance(item, OptionCaseSensitivity):
+                option = item
+            elif isinstance(item, ICaseSensitive):
+                item.is_sensitive = not option.is_positive
+            elif isinstance(item, PartContainer) or isinstance(item, ConditionalSubexpression):
+                item._perform_case_option(option)
+
+    def _perform_case_option(self, initial=OptionCaseSensitivity(False)):
+        self._perform_case_for_branch(self.branch_true, initial)
+        self._perform_case_for_branch(self.branch_false, initial)
+        self._perform_case_for_branch(self.condition, initial)
