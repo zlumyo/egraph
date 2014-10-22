@@ -54,6 +54,10 @@ class Part(metaclass=abc.ABCMeta):
             id_counter += 1
         return id_counter
 
+    @abc.abstractmethod
+    def __eq__(self, other):
+        pass
+
 
 class OptionCaseSensitivity(Part):
     """
@@ -120,6 +124,16 @@ class PartContainer(Part, metaclass=abc.ABCMeta):
                 elif isinstance(item, PartContainer) or isinstance(item, ConditionalSubexpression):
                     item._perform_case_option(option)
 
+    def __eq__(self, other):
+        if len(self) != len(other):
+            return False
+        for i, j in zip(self, other):
+            if len(i) != len(j):
+                return False
+            else:
+                for x, y in zip(i, j):
+                    return x == y
+
 
 class ICaseSensitive(metaclass=abc.ABCMeta):
     """
@@ -137,18 +151,20 @@ class ICaseSensitive(metaclass=abc.ABCMeta):
     def is_sensitive(self, value: bool):
         self._is_sensitive = value
 
+    def __eq__(self, other):
+        return self.is_sensitive == other.is_sensitive
 
-class ExplainingGraph(PartContainer, ICaseSensitive):
+
+class IGraph(PartContainer, metaclass=abc.ABCMeta):
     """
-    Модель объясняющего графа.
+    Абстрактный граф.
     """
 
-    def __init__(self, is_exact=False, is_case_sensitive=True):
-        PartContainer.__init__(self, "explaining_graph")
-        ICaseSensitive.__init__(self)
-        self.is_sensitive = is_case_sensitive
+    def __init__(self, id="graph"):
+        PartContainer.__init__(self, id)
         self._id_counter = 1
-        self.is_exact = is_exact
+        self._to_graph_funcs = []
+        self._extra_preprocessing = []
 
     def to_graph(self, id_counter=1):
         """
@@ -156,8 +172,8 @@ class ExplainingGraph(PartContainer, ICaseSensitive):
         """
         rabbit = deepcopy(self)             # сохраним копию, чтобы потом восстановить
         """:type : ExplainingGraph"""
-        # реализуем опцию чувствительности к регистру
-        rabbit._perform_case_option(OptionCaseSensitivity(not self.is_sensitive))
+        for func in self._to_graph_funcs:
+            eval(func)
         graph = rabbit._to_real_graph()
         ExplainingGraph._del_case_options(graph, graph)
         return graph
@@ -176,20 +192,8 @@ class ExplainingGraph(PartContainer, ICaseSensitive):
         if len(self._branches) == 0:  # если ветвей нет, то добавим пустую
             self._branches.append([])
 
-        # если уставновлен флаг точного совпадения, то проводим соотвествующие преобразования
-        if self.is_exact:
-            sol = Assert(AssertType.circumflex, self._id_counter)
-            self._id_counter += 1
-            eol = Assert(AssertType.dollar, self._id_counter)
-            self._id_counter += 1
-
-            graph.bgcolor = 'grey'
-
-            container = Subexpression(is_wrapper=True)
-            for branch in self._branches:
-                container.add_branch(branch)
-
-            self._branches = [[sol, container, eol]]
+        for func in self._extra_preprocessing:
+            eval(func)
 
         current = begin
         if len(self._branches) == 1:
@@ -392,6 +396,41 @@ class ExplainingGraph(PartContainer, ICaseSensitive):
             ExplainingGraph._del_case_options(subgraph, main)
 
 
+class ExplainingGraph(IGraph, ICaseSensitive):
+    """
+    Модель объясняющего графа.
+    """
+
+    def __init__(self, is_exact=False, is_case_sensitive=True):
+        IGraph.__init__(self, "explaining_graph")
+        ICaseSensitive.__init__(self)
+        self.is_sensitive = is_case_sensitive
+        self.is_exact = is_exact
+        # реализуем опцию чувствительности к регистру
+        self._to_graph_funcs.append(
+            "rabbit._perform_case_option(OptionCaseSensitivity(not self.is_sensitive))"
+        )
+        self._extra_preprocessing.append(
+            "self._perform_is_exact(graph)"
+        )
+
+    def _perform_is_exact(self, graph):
+        # если уставновлен флаг точного совпадения, то проводим соотвествующие преобразования
+        if self.is_exact:
+            sol = Assert(AssertType.circumflex, self._id_counter)
+            self._id_counter += 1
+            eol = Assert(AssertType.dollar, self._id_counter)
+            self._id_counter += 1
+
+            graph.bgcolor = 'grey'
+
+            container = Subexpression(is_wrapper=True)
+            for branch in self._branches:
+                container.add_branch(branch)
+
+            self._branches = [[sol, container, eol]]
+
+
 class Text(Part, ICaseSensitive):
     """
     Простой текст в регулярном выражении.
@@ -424,6 +463,9 @@ class Text(Part, ICaseSensitive):
             style=('' if self.is_sensitive else 'filled')
         )
         return node, id_counter, node, node
+
+    def __eq__(self, other):
+        return self.text == other.text and ICaseSensitive.__eq__(self, other)
 
 
 class AssertType(Enum):
@@ -462,6 +504,9 @@ class Assert(Part):
         text = self._assert_strings[self.type]
         node = DotNode(self._id, text, comment=Assert.__name__)
         return node, id_counter, node, node
+
+    def __eq__(self, other):
+        return self.type == other.type
 
 
 class Subexpression(PartContainer):
@@ -569,7 +614,10 @@ class Subexpression(PartContainer):
                 subgraph.items.append(DotLink(current, finish, id_counter))
                 id_counter += 1
 
-        return (subgraph, id_counter, global_enter, global_exit)
+        return subgraph, id_counter, global_enter, global_exit
+
+    def __eq__(self, other):
+        return self.number == other.number and PartContainer.__eq__(self, other)
 
 
 class CharflagType(Enum):
@@ -1231,6 +1279,9 @@ class Charflag(Part, ICaseSensitive):
         )
         return node, id_counter, node, node
 
+    def __eq__(self, other):
+        return self.type == other.type and ICaseSensitive.__eq__(self, other)
+
 
 class Backreference(Part, ICaseSensitive):
     """
@@ -1262,6 +1313,9 @@ class Backreference(Part, ICaseSensitive):
             style=('' if self.is_sensitive else 'filled')
         )
         return node, id_counter, node, node
+
+    def __eq__(self, other):
+        return self.number == other.number and ICaseSensitive.__eq__(self, other)
 
 
 class SubexpressionCall(Part, ICaseSensitive):
@@ -1313,6 +1367,11 @@ class SubexpressionCall(Part, ICaseSensitive):
             style=('' if self.is_sensitive else 'filled')
         )
         return node, id_counter, node, node
+
+    def __eq__(self, other):
+        return self.is_recursive == other.is_recursive \
+            and ICaseSensitive.__eq__(self, other) \
+            and self.subexpr_ref == other.subexpr_ref
 
 
 class Quantifier(PartContainer):
@@ -1423,7 +1482,13 @@ class Quantifier(PartContainer):
                 subgraph.items.append(DotLink(current, finish, id_counter))
                 id_counter += 1
 
-        return (subgraph, id_counter, global_enter, global_exit)
+        return subgraph, id_counter, global_enter, global_exit
+
+    def __eq__(self, other):
+        return self.min == other.min \
+            and PartContainer.__eq__(self, other) \
+            and self.max == other.max \
+            and self.is_greedy == other.is_greedy
 
 
 class AssertComplexType(Enum):
@@ -1530,6 +1595,10 @@ class AssertComplex(PartContainer):
 
         return wrapper, id_counter, global_enter, global_exit
 
+    def __eq__(self, other):
+        return self.type == other.type \
+            and PartContainer.__eq__(self, other)
+
 
 class Range:
     """
@@ -1562,7 +1631,7 @@ class Range:
     def __str__(self):
         return "from {0} to {1}".format(self.start, self.end)
 
-    def __cmp__(self, other):
+    def __eq__(self, other):
         return self.start == other.start and self.end == other.end
 
     @staticmethod
@@ -1589,6 +1658,13 @@ class CharacterClass(Part, ICaseSensitive):
     @is_inverted.setter
     def is_inverted(self, value: bool):
         self._is_inverted = value
+
+    def __getitem__(self, item):
+        return self._parts[item]
+
+    def __iter__(self):
+        for branch in self._parts:
+            yield branch
 
     def add_part(self, value):
         allowed_types = [Text, Charflag, Range]
@@ -1621,6 +1697,20 @@ class CharacterClass(Part, ICaseSensitive):
         result += ''.join(['<TD>' + str(elem) + '</TD>' for elem in filtered])
 
         return result + '</TR></TABLE>>'
+
+    def __eq__(self, other):
+        if len(self) != len(other):
+            return False
+
+        result = True
+        for i, j in zip(self, other):
+            if i != j:
+                result = False
+                break
+
+        return ICaseSensitive.__eq__(self, other) \
+            and self.is_inverted == other.is_inverted \
+            and result
 
 
 class ConditionalSubexpression(Part):
@@ -1751,3 +1841,6 @@ class ConditionalSubexpression(Part):
         self._perform_case_for_branch(self.branch_true, initial)
         self._perform_case_for_branch(self.branch_false, initial)
         self._perform_case_for_branch(self.condition, initial)
+
+    def __eq__(self, other):
+        raise NotImplementedError("Not yet!")
